@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python main.py)",
+      "Bash(python -c ':*)",
+      "Bash(grep -E \"\\(mp4|avi|mov\\)$\")",
+      "Bash(pip show:*)"
+    ]
+  }
+}

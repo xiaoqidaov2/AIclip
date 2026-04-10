@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from langchain_core.messages import AIMessage, ToolMessage
+
 from .task import TaskInstance, TaskStatus, TaskType
 from .registry import TaskRegistry
 from .notification import TaskNotification, NotificationQueue
@@ -32,6 +34,11 @@ from .worker import WorkerManager
 from .context import ContextManager, ContextDecision
 
 logger = logging.getLogger(__name__)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
 
 class WorkflowPhase(str, Enum):
@@ -250,20 +257,14 @@ class CoordinatorMode:
     def _make_execute_fn(self, item: WorkItem) -> Callable:
         """构建 Worker 的执行函数。"""
         agent = self._agent
-        tools = self._tools
 
         async def execute(instance: TaskInstance, context: Dict[str, Any]) -> Any:
             prompt = context.get("prompt", item.description)
-            if hasattr(agent, "ainvoke"):
-                response = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-            elif hasattr(agent, "invoke"):
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None, agent.invoke, {"messages": [{"role": "user", "content": prompt}]}
-                )
-            else:
-                response = {"result": f"执行: {prompt}"}
-            return response
+            return await self._run_agent_with_visibility(
+                agent=agent,
+                messages=[{"role": "user", "content": prompt}],
+                label=f"worker:{instance.name}",
+            )
 
         return execute
 
@@ -319,17 +320,11 @@ class CoordinatorMode:
 """
 
         try:
-            if hasattr(self._agent, "ainvoke"):
-                response = await self._agent.ainvoke({
-                    "messages": [{"role": "user", "content": synthesis_prompt}]
-                })
-            elif hasattr(self._agent, "invoke"):
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None, self._agent.invoke, {"messages": [{"role": "user", "content": synthesis_prompt}]}
-                )
-            else:
-                response = None
+            response = await self._run_agent_with_visibility(
+                agent=self._agent,
+                messages=[{"role": "user", "content": synthesis_prompt}],
+                label="coordinator:synthesis",
+            )
 
             if response:
                 content = ""
@@ -370,6 +365,111 @@ class CoordinatorMode:
             "implementation_plan": [],
             "verification_plan": [],
         }
+
+    async def _run_agent_with_visibility(
+        self,
+        agent: Any,
+        messages: List[Dict[str, Any]],
+        label: str,
+    ) -> Any:
+        """Run a LangChain agent with live tool-call and assistant-content visibility."""
+        if hasattr(agent, "stream"):
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                None,
+                self._drain_stream_sync,
+                agent,
+                messages,
+                label,
+            )
+
+        if hasattr(agent, "ainvoke"):
+            return await agent.ainvoke({"messages": messages})
+
+        if hasattr(agent, "invoke"):
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, agent.invoke, {"messages": messages})
+
+        return {"result": f"执行: {messages[-1].get('content', '')}"}
+
+    def _drain_stream_sync(self, agent: Any, messages: List[Dict[str, Any]], label: str) -> Any:
+        """Synchronously consume agent.stream so intermediate events are printed live."""
+        final_content = ""
+        collected_messages: List[Any] = []
+        seen_tool_calls: Set[str] = set()
+
+        try:
+            for chunk in agent.stream({"messages": messages}):
+                if not isinstance(chunk, dict):
+                    continue
+
+                chunk_messages: List[Any] = []
+                if "model" in chunk:
+                    chunk_messages = chunk["model"].get("messages", [])
+                elif "tools" in chunk:
+                    chunk_messages = chunk["tools"].get("messages", [])
+                elif "agent" in chunk:
+                    chunk_messages = chunk["agent"].get("messages", [])
+                elif "messages" in chunk:
+                    chunk_messages = chunk["messages"]
+
+                for msg in chunk_messages:
+                    collected_messages.append(msg)
+                    if isinstance(msg, ToolMessage) or type(msg).__name__ == "ToolMessage":
+                        self._print_tool_result(msg, label)
+                    elif isinstance(msg, AIMessage) or type(msg).__name__ == "AIMessage":
+                        final_content = self._print_ai_message(msg, seen_tool_calls, final_content, label)
+        except Exception as e:
+            logger.warning("%s 流式执行失败: %s", label, e)
+
+        return {"messages": collected_messages, "content": final_content}
+
+    def _print_ai_message(
+        self,
+        msg: Any,
+        seen_tool_calls: Set[str],
+        current_content: str,
+        label: str,
+    ) -> str:
+        tool_calls = getattr(msg, "tool_calls", None)
+        if tool_calls:
+            for tool_call in tool_calls:
+                tool_call_id = tool_call.get("id", "")
+                if tool_call_id and tool_call_id in seen_tool_calls:
+                    continue
+                if tool_call_id:
+                    seen_tool_calls.add(tool_call_id)
+                name = tool_call.get("name", "unknown")
+                args = tool_call.get("args", {})
+                logger.info("[%s] 调用工具: %s %s", label, name, self._format_args(args))
+
+        content = getattr(msg, "content", "")
+        if isinstance(content, str) and content.strip() and content != current_content:
+            current_content = content
+            logger.info("[%s] AI 片段: %s", label, self._truncate_text(content, 500))
+
+        return current_content
+
+    def _print_tool_result(self, msg: Any, label: str) -> None:
+        name = getattr(msg, "name", "tool")
+        content = getattr(msg, "content", "")
+        logger.info("[%s] 工具结果: [%s] %s", label, name, self._truncate_text(str(content), 500))
+
+    def _format_args(self, args: Dict[str, Any]) -> str:
+        if not args:
+            return ""
+        parts = []
+        for key, value in args.items():
+            value_text = str(value)
+            if len(value_text) > 60:
+                value_text = value_text[:57] + "..."
+            parts.append(f"{key}={value_text}")
+        return "(" + ", ".join(parts) + ")"
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3] + "..."
 
     def _plan_implementation(self, spec: Dict[str, Any]) -> List[WorkItem]:
         """根据规范规划实现工作单元。"""
