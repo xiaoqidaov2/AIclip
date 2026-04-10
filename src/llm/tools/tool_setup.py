@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .asr_tool import ASRTool
-from .file_tools import bash_command, edit_file, grep_file, read_file
+from .file_tools import bash_command, edit_file, grep_file, list_directory, read_file, write_file
 from .moviepy_tool import MoviePyTool
 from .subtitle_tool import SubtitleTool
 from .tool_registration import ToolRegistration
@@ -27,13 +26,14 @@ class ToolSetup:
         self.registry = ToolRegistration()
         self._docs_dir = Path(__file__).resolve().parents[3] / "resources" / "docs"
         self._resources: Dict[str, Any] = {
-            "asr": ASRTool(),
-            "subtitle": SubtitleTool(),
+            "whisper": SubtitleTool(),
             "moviepy": MoviePyTool(),
             "file_tools": {
                 "read_file": read_file,
                 "edit_file": edit_file,
+                "write_file": write_file,
                 "grep_file": grep_file,
+                "list_directory": list_directory,
                 "bash_command": bash_command,
             },
         }
@@ -42,7 +42,7 @@ class ToolSetup:
                 name="transcribe_audio",
                 title="Transcription Tool",
                 description="Transcribe audio or video into text.",
-                source="asr",
+                source="whisper",
                 attr="transcribe",
                 doc_file="transcribe_audio.txt",
             ),
@@ -50,7 +50,7 @@ class ToolSetup:
                 name="generate_subtitle_srt",
                 title="Subtitle Generator Tool (SRT)",
                 description="Generate SRT subtitles from audio or video.",
-                source="subtitle",
+                source="whisper",
                 attr="generate_srt",
                 doc_file="generate_subtitle_srt.txt",
             ),
@@ -58,7 +58,7 @@ class ToolSetup:
                 name="generate_subtitle_vtt",
                 title="Subtitle Generator Tool (VTT)",
                 description="Generate VTT subtitles from audio or video.",
-                source="subtitle",
+                source="whisper",
                 attr="generate_vtt",
                 doc_file="generate_subtitle_vtt.txt",
                 register=False,
@@ -67,7 +67,7 @@ class ToolSetup:
                 name="generate_subtitle",
                 title="Subtitle Generator Tool (Unified)",
                 description="Generate subtitles in SRT or VTT format.",
-                source="subtitle",
+                source="whisper",
                 attr="generate",
                 doc_file="generate_subtitle.txt",
                 register=False,
@@ -145,12 +145,28 @@ class ToolSetup:
                 doc_file="edit_file.txt",
             ),
             ToolSpec(
+                name="write_file",
+                title="Write File Tool",
+                description="Write text content to a new or existing file.",
+                source="file_tools",
+                attr="write_file",
+                doc_file="write_file.txt",
+            ),
+            ToolSpec(
                 name="grep_file",
                 title="Grep File Tool",
                 description="Search for text patterns in files.",
                 source="file_tools",
                 attr="grep_file",
                 doc_file="grep_file.txt",
+            ),
+            ToolSpec(
+                name="list_directory",
+                title="Directory Listing Tool",
+                description="List files and folders in a directory, with optional hidden items.",
+                source="file_tools",
+                attr="list_directory",
+                doc_file="list_directory.txt",
             ),
             ToolSpec(
                 name="bash_command",

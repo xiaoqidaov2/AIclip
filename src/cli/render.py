@@ -209,7 +209,10 @@ class CLIRenderer:
                 if "ok" in data:
                     return "成功" if data["ok"] else "失败"
                 if "segment_count" in data and "format" in data:
-                    return f"已生成 {data['segment_count']} 段 {str(data['format']).upper()} 字幕"
+                    summary = f"已生成 {data['segment_count']} 段 {str(data['format']).upper()} 字幕"
+                    if "output_path" in data:
+                        summary += f"，已保存到 {data['output_path']}"
+                    return summary
                 if "text" in data and "language" in data:
                     return f"已转录文本，语言: {data['language']}"
         except (json.JSONDecodeError, TypeError):

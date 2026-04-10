@@ -13,7 +13,9 @@ class LLMConfig:
         self.model = model or os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
         self.temperature = temperature if temperature is not None else float(os.getenv("OPENAI_TEMPERATURE", "0"))
         self.openai_api_base = openai_api_base or os.getenv("OPENAI_API_BASE") or "https://api.openai.com/v1"
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY") or "sk-xxx"
+        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY not configured")
 
     def create_llm(self) -> ChatOpenAI:
         return ChatOpenAI(

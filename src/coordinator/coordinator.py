@@ -402,7 +402,7 @@ class CoordinatorMode:
 - 每个步骤必须有可执行的命令或操作
 - 验证步骤必须实际运行，不能只读代码
 - 当前运行环境为 Windows，禁止在 prompt 中使用 Unix 命令（head/tail/ls/grep/fc-list/find /usr 等）
-- 如需列举文件或检查目录，使用 Python 代码（通过 bash_command 工具）或 Windows 命令（dir、type）
+- 如需创建或覆盖文本文件，优先使用 write_file；如需列举文件或检查目录，使用 list_directory、Python 代码（通过 bash_command 工具）或 Windows 命令（dir、type）
 - 每个步骤的 prompt 必须明确写出：输入文件的完整路径、预期生成的输出文件完整路径（无首尾空格）
 - 步骤间有依赖时，后续步骤的 prompt 必须说明"前序步骤将提供实际路径，请以实际收到的路径为准"
 - 文件路径不得包含前后多余的空格或换行符

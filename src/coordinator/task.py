@@ -7,6 +7,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from typing import Any, Callable, Dict, Optional
 
 
@@ -160,12 +161,15 @@ class InProcessTeammateTask(Task):
     task_type = TaskType.IN_PROCESS_TEAMMATE
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
+        import asyncio
+
         func: Optional[Callable] = context.get("func")
         if func is None:
             raise TaskError("InProcessTeammate requires context['func']")
         args = context.get("args", ())
         kwargs = context.get("kwargs", {})
-        return func(*args, **kwargs)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
     async def kill(self, instance: TaskInstance) -> None:
         instance.kill()

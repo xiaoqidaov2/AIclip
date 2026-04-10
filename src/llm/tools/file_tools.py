@@ -1,5 +1,7 @@
 import os
 import subprocess
+import stat
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -93,6 +95,35 @@ class FileTools:
                 "content": ""
             }
 
+    def write(self, file_path: str, content: str, overwrite: bool = True) -> Dict[str, Any]:
+        """Write text content to a file, creating parent directories if needed."""
+        try:
+            path = Path(file_path)
+            existed_before = path.exists()
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            if existed_before and not overwrite:
+                return {
+                    "ok": False,
+                    "summary": f"File already exists: {file_path}",
+                    "content": "",
+                }
+
+            path.write_text(content, encoding="utf-8")
+            lines = len(content.splitlines())
+            action = "Overwrote" if existed_before else "Created"
+            return {
+                "ok": True,
+                "summary": f"{action} {file_path} with {lines} line(s)",
+                "content": f"Successfully wrote {file_path}",
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "summary": f"Error writing file: {str(e)}",
+                "content": "",
+            }
+
     def grep(self, pattern: str, file_path: Optional[str] = None) -> Dict[str, Any]:
         """Search for pattern in file or files.
 
@@ -156,6 +187,89 @@ class FileTools:
                 "ok": False,
                 "summary": f"Error during grep: {str(e)}",
                 "content": ""
+            }
+
+    def _is_hidden(self, path: Path) -> bool:
+        if path.name.startswith("."):
+            return True
+
+        if os.name != "nt":
+            return False
+
+        try:
+            file_attributes = getattr(path.stat(), "st_file_attributes", 0)
+            hidden_flag = getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2)
+            return bool(file_attributes & hidden_flag)
+        except (OSError, ValueError):
+            return False
+
+    def list_directory(self, directory_path: str = ".", include_hidden: bool = False) -> Dict[str, Any]:
+        """List files and folders in a directory."""
+        try:
+            path = Path(directory_path)
+            if not path.exists():
+                return {
+                    "ok": False,
+                    "summary": f"Path not found: {directory_path}",
+                    "content": "",
+                    "entries": [],
+                }
+
+            if not path.is_dir():
+                return {
+                    "ok": False,
+                    "summary": f"Not a directory: {directory_path}",
+                    "content": "",
+                    "entries": [],
+                }
+
+            entries = []
+            for entry in sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+                if not include_hidden and self._is_hidden(entry):
+                    continue
+
+                try:
+                    info = entry.stat()
+                except OSError:
+                    continue
+
+                is_dir = entry.is_dir()
+                entry_data = {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "type": "directory" if is_dir else "file",
+                    "hidden": self._is_hidden(entry),
+                    "modified_time": datetime.fromtimestamp(info.st_mtime).isoformat(timespec="seconds"),
+                }
+                if not is_dir:
+                    entry_data["size"] = info.st_size
+                entries.append(entry_data)
+
+            lines = []
+            for entry in entries:
+                marker = "[D]" if entry["type"] == "directory" else "[F]"
+                hidden_tag = " (hidden)" if entry["hidden"] else ""
+                size_text = f" - {entry['size']} bytes" if entry["type"] == "file" and "size" in entry else ""
+                lines.append(f"{marker} {entry['name']}{hidden_tag}{size_text}")
+
+            summary = f"Listed {len(entries)} item(s) in {directory_path}"
+            if include_hidden:
+                summary += " (including hidden)"
+
+            return {
+                "ok": True,
+                "summary": summary,
+                "content": "\n".join(lines),
+                "directory_path": str(path),
+                "include_hidden": include_hidden,
+                "entries": entries,
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "summary": f"Error listing directory: {str(e)}",
+                "content": "",
+                "entries": [],
             }
 
     def bash(self, command: str) -> Dict[str, Any]:
@@ -228,6 +342,10 @@ def edit_file(file_path: str, old_string: str, new_string: str, replace_all: boo
     """Edit a file by replacing text and return a structured summary of the change."""
     return file_tools.edit(file_path, old_string, new_string, replace_all)
 
+def write_file(file_path: str, content: str, overwrite: bool = True) -> Dict[str, Any]:
+    """Write text content to a file and return a structured result."""
+    return file_tools.write(file_path, content, overwrite)
+
 def grep_file(pattern: str, file_path: Optional[str] = None) -> Dict[str, Any]:
     """Search for a regex pattern in a file or directory and return matching lines."""
     return file_tools.grep(pattern, file_path)
@@ -235,3 +353,7 @@ def grep_file(pattern: str, file_path: Optional[str] = None) -> Dict[str, Any]:
 def bash_command(command: str) -> Dict[str, Any]:
     """Run a shell command and return its exit status plus captured output."""
     return file_tools.bash(command)
+
+def list_directory(directory_path: str = ".", include_hidden: bool = False) -> Dict[str, Any]:
+    """List directory contents and return files/folders in a structured result."""
+    return file_tools.list_directory(directory_path, include_hidden)

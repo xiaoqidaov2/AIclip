@@ -3,7 +3,7 @@ from .tool_setup import ToolSetup
 from .asr_tool import ASRTool
 from .subtitle_tool import SubtitleTool
 from .moviepy_tool import MoviePyTool
-from .file_tools import read_file, edit_file, grep_file, bash_command
+from .file_tools import read_file, edit_file, write_file, grep_file, list_directory, bash_command
 
 __all__ = [
     "ToolRegistration",
@@ -13,6 +13,8 @@ __all__ = [
     "MoviePyTool",
     "read_file",
     "edit_file",
+    "write_file",
     "grep_file",
+    "list_directory",
     "bash_command",
 ]

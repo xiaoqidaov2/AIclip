@@ -1,30 +1,33 @@
+from typing import Any, Callable, Dict, Optional
+
+
 class ToolRegistration:
-    """工具注册类，用于注册和管理工具"""
+    """Tool registry for registering and looking up tools."""
 
     def __init__(self):
-        self.tools = {}
-        self.tool_docs = {}
+        self.tools: Dict[str, Callable[..., Any]] = {}
+        self.tool_docs: Dict[str, str] = {}
 
-    def register_tool(self, name: str, func):
-        """注册工具"""
+    def register_tool(self, name: str, func: Callable[..., Any]) -> None:
+        """Register a tool."""
         self.tools[name] = func
 
-    def register_tool_doc(self, name: str, doc: str):
-        """注册工具说明文档。"""
+    def register_tool_doc(self, name: str, doc: str) -> None:
+        """Register tool documentation."""
         self.tool_docs[name] = doc
 
-    def get_tool(self, name: str):
-        """获取工具"""
+    def get_tool(self, name: str) -> Optional[Callable[..., Any]]:
+        """Get a tool."""
         return self.tools.get(name)
 
-    def get_tool_doc(self, name: str):
-        """获取工具说明文档。"""
+    def get_tool_doc(self, name: str) -> Optional[str]:
+        """Get tool documentation."""
         return self.tool_docs.get(name)
 
-    def list_tools(self):
-        """列出所有注册的工具"""
+    def list_tools(self) -> list[str]:
+        """List registered tools."""
         return list(self.tools.keys())
 
-    def list_tool_docs(self):
-        """列出所有已注册工具说明。"""
+    def list_tool_docs(self) -> Dict[str, str]:
+        """List registered tool docs."""
         return dict(self.tool_docs)

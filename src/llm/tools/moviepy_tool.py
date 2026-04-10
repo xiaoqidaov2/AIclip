@@ -33,11 +33,60 @@ class MoviePyTool:
     def _normalize_path(self, path_text: str, collapse_filename_separators: bool = False) -> str:
         cleaned = path_text.strip().strip('"').strip("'")
         path = Path(cleaned)
+        parts = [part.strip() for part in path.parts]
+        if parts:
+            path = Path(*parts)
         if not collapse_filename_separators:
             return str(path)
 
         filename = path.name.replace("_ ", "_").replace(" _", "_").replace("- ", "-").replace(" -", "-")
         return str(path.with_name(filename))
+
+    def _ensure_trailing_blank_line(self, content: str) -> str:
+        return content.rstrip() + "\n\n"
+
+    def _resolve_subtitle_position(
+        self,
+        position: str,
+        video_width: int,
+        video_height: int,
+        subtitle_width: int,
+        subtitle_height: int,
+        margin_x: int = 0,
+        margin_y: int = 48,
+        x_offset: int = 0,
+        y_offset: int = 0,
+    ) -> tuple[float, float]:
+        position_key = position.strip().lower().replace("-", "_")
+        center_x = (video_width - subtitle_width) / 2
+        center_y = (video_height - subtitle_height) / 2
+
+        if position_key in {"top", "top_center", "top_middle"}:
+            return center_x + x_offset, max(margin_y, 0) + y_offset
+        if position_key in {"bottom", "bottom_center", "bottom_middle"}:
+            return center_x + x_offset, max(video_height - subtitle_height - margin_y, 0) + y_offset
+        if position_key in {"center", "middle"}:
+            return center_x + x_offset, center_y + y_offset
+        if position_key in {"top_left", "left_top"}:
+            return max(margin_x, 0) + x_offset, max(margin_y, 0) + y_offset
+        if position_key in {"top_right", "right_top"}:
+            return max(video_width - subtitle_width - margin_x, 0) + x_offset, max(margin_y, 0) + y_offset
+        if position_key in {"bottom_left", "left_bottom"}:
+            return max(margin_x, 0) + x_offset, max(video_height - subtitle_height - margin_y, 0) + y_offset
+        if position_key in {"bottom_right", "right_bottom"}:
+            return (
+                max(video_width - subtitle_width - margin_x, 0) + x_offset,
+                max(video_height - subtitle_height - margin_y, 0) + y_offset,
+            )
+        if position_key in {"left", "center_left"}:
+            return max(margin_x, 0) + x_offset, center_y + y_offset
+        if position_key in {"right", "center_right"}:
+            return max(video_width - subtitle_width - margin_x, 0) + x_offset, center_y + y_offset
+
+        raise ValueError(
+            "position must be one of: top, bottom, center, top_left, top_right, "
+            "bottom_left, bottom_right, left, right"
+        )
 
     def _ensure_srt(self, subtitle_path: str) -> tuple[str, Optional[str]]:
         subtitle_path = self._normalize_path(subtitle_path)
@@ -47,7 +96,7 @@ class MoviePyTool:
             # MoviePy's SubtitlesClip has encoding issues on Windows
             # So we always create a UTF-8 temp file
             with open(subtitle_path, "r", encoding="utf-8") as f:
-                content = f.read()
+                content = self._ensure_trailing_blank_line(f.read())
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".srt", mode="w", encoding="utf-8")
             try:
                 temp_file.write(content)
@@ -62,7 +111,7 @@ class MoviePyTool:
             raise ValueError("subtitle_path must be .srt or .vtt")
 
         with open(subtitle_path, "r", encoding="utf-8") as f:
-            content = f.read()
+            content = self._ensure_trailing_blank_line(f.read())
 
         lines = []
         index = 1
@@ -80,7 +129,7 @@ class MoviePyTool:
 
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".srt", mode="w", encoding="utf-8")
         try:
-            temp_file.write("\n".join(lines))
+            temp_file.write(self._ensure_trailing_blank_line("\n".join(lines)))
             temp_file.close()
             return temp_file.name, temp_file.name
         except Exception:
@@ -97,6 +146,11 @@ class MoviePyTool:
         font_size: int = 36,
         color: str = "white",
         position: str = "bottom",
+        margin_x: int = 0,
+        margin_y: int = 48,
+        x_offset: int = 0,
+        y_offset: int = 0,
+        subtitle_box_width_ratio: float = 0.9,
     ) -> dict:
         """将字幕文件烧录到视频中。
 
@@ -107,10 +161,15 @@ class MoviePyTool:
             output_path: 输出视频路径，可选
             font_size: 字体大小，默认 36
             color: 字体颜色，默认 white
-            position: 字幕位置，目前只支持 bottom
+            position: 字幕位置，支持 top/bottom/center/left/right 及四角预设
+            margin_x: 侧边安全边距，默认 0
+            margin_y: 上下安全边距，默认 48
+            x_offset: 位置水平微调，单位像素
+            y_offset: 位置垂直微调，单位像素
+            subtitle_box_width_ratio: 字幕文本区域宽度占比，默认 0.9
         """
-        if position != "bottom":
-            raise ValueError("position currently only supports 'bottom'")
+        if not 0.1 <= subtitle_box_width_ratio <= 1.0:
+            raise ValueError("subtitle_box_width_ratio must be between 0.1 and 1.0")
 
         video_path = self._normalize_path(video_path)
         subtitle_path = self._normalize_path(subtitle_path)
@@ -140,10 +199,27 @@ class MoviePyTool:
                     text_align="center",
                     horizontal_align="center",
                     vertical_align="bottom",
-                    size=(int(source.w * 0.9), None),
+                    size=(int(source.w * subtitle_box_width_ratio), None),
                 ),
                 encoding="utf-8",
-            ).with_position(("center", "bottom"))
+            )
+            subtitle_clip.size = (
+                int(source.w * subtitle_box_width_ratio),
+                max(int(font_size * 3), 1),
+            )
+            subtitle_clip = subtitle_clip.with_position(
+                self._resolve_subtitle_position(
+                    position,
+                    int(source.w),
+                    int(source.h),
+                    int(subtitle_clip.w),
+                    int(subtitle_clip.h),
+                    margin_x=margin_x,
+                    margin_y=margin_y,
+                    x_offset=x_offset,
+                    y_offset=y_offset,
+                )
+            )
 
             final_clip = CompositeVideoClip([source, subtitle_clip], size=source.size)
             output_path = output_path or self._default_output_path(video_path, "subbed")
@@ -153,6 +229,12 @@ class MoviePyTool:
                 "source_path": video_path,
                 "subtitle_path": subtitle_path,
                 "font_path": font_path,
+                "position": position,
+                "margin_x": margin_x,
+                "margin_y": margin_y,
+                "x_offset": x_offset,
+                "y_offset": y_offset,
+                "subtitle_box_width_ratio": subtitle_box_width_ratio,
                 "operation": "add_subtitles",
                 "duration": float(source.duration),
             }

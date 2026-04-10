@@ -13,7 +13,9 @@ Available commands:
 Built-in tools available to agent:
   read_file     Read file content
   edit_file     Replace strings in a file
+  write_file    Write text content to a file
   grep_file     Search for patterns in files
+  list_directory List files and folders in a directory
   bash_command  Execute shell commands
   transcribe    Transcribe audio/video to text
   generate_srt  Generate SRT subtitles from video
