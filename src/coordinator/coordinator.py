@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -28,15 +29,35 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from langchain_core.messages import AIMessage, ToolMessage
 
 from .task import TaskInstance, TaskStatus, TaskType
+
+
+def _extract_result_text(result: Any, max_chars: int = 400) -> str:
+    """从 agent 返回结果中提取可读文本摘要。"""
+    if isinstance(result, dict):
+        if "messages" in result:
+            parts = []
+            for msg in result["messages"]:
+                c = getattr(msg, "content", "")
+                if isinstance(c, str) and c.strip():
+                    parts.append(c.strip())
+            return " | ".join(parts)[:max_chars]
+        if "content" in result:
+            return str(result["content"])[:max_chars]
+        if "error" in result:
+            return f"[错误] {result['error']}"
+    if isinstance(result, str):
+        return result[:max_chars]
+    return str(result)[:max_chars]
 from .registry import TaskRegistry
 from .notification import TaskNotification, NotificationQueue
 from .worker import WorkerManager
 from .context import ContextManager, ContextDecision
+from .verification import VerificationAgent
 
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.WARNING,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
@@ -95,6 +116,7 @@ class CoordinatorMode:
         self._notifications = notification_queue or NotificationQueue()
         self._worker_mgr = WorkerManager(self._notifications)
         self._context_mgr = ContextManager()
+        self._verification_agent = VerificationAgent(project_root=os.getcwd())
         self._current_phase = WorkflowPhase.RESEARCH
         self._phase_results: Dict[WorkflowPhase, List[Any]] = {p: [] for p in WorkflowPhase}
 
@@ -207,9 +229,11 @@ class CoordinatorMode:
         return all_results
 
     async def _run_serial_group(self, items: List[WorkItem]) -> List[Any]:
-        """组内串行执行。"""
+        """组内串行执行，前序结果自动传递给后续步骤。"""
         results = []
         for item in items:
+            if results:
+                item.context["previous_results"] = list(results)
             instance, execute_fn = self._prepare_worker(item)
             try:
                 result = await self._worker_mgr.run_agent(instance, execute_fn, item.context)
@@ -227,11 +251,17 @@ class CoordinatorMode:
         decision, existing_id = self._context_mgr.decide(item.target_files, item.target_topics)
 
         if decision == ContextDecision.CONTINUE and existing_id:
-            logger.info("续用 Worker %s", existing_id)
-            ctx = self._context_mgr.get_context(existing_id)
-            if ctx:
-                ctx.message_count += 1
-            instance = self._worker_mgr.get_agent(existing_id) or self._create_worker(item)
+            instance = self._worker_mgr.get_agent(existing_id)
+            if instance is not None and not instance.is_terminal:
+                logger.info("续用 Worker %s", existing_id)
+                ctx = self._context_mgr.get_context(existing_id)
+                if ctx:
+                    ctx.message_count += 1
+            else:
+                # Worker 已处于终态（completed/failed/killed），不可续用
+                logger.info("Worker %s 已终止，标记过期并新建", existing_id)
+                self._context_mgr.mark_stale(existing_id)
+                instance = self._create_worker(item)
         else:
             logger.info("新建 Worker")
             instance = self._create_worker(item)
@@ -259,7 +289,55 @@ class CoordinatorMode:
         agent = self._agent
 
         async def execute(instance: TaskInstance, context: Dict[str, Any]) -> Any:
+            verification_step = context.get("verification_step")
+            if verification_step:
+                verification_context = {
+                    "checks": [
+                        {
+                            "name": verification_step.get("name", item.description),
+                            "description": verification_step.get("description", item.description),
+                            "command": verification_step.get("command", ""),
+                            "expected_output": verification_step.get("expected_output"),
+                        }
+                    ]
+                }
+                report = await self._verification_agent.verify(verification_context)
+                first_check = report.checks[0] if report.checks else None
+                return {
+                    "verification_report": {
+                        "all_passed": report.all_passed,
+                        "summary": report.summary,
+                        "checks": [
+                            {
+                                "name": check.name,
+                                "description": check.description,
+                                "command_run": check.command_run,
+                                "output_observed": check.output_observed,
+                                "result": check.result.value,
+                                "error_message": check.error_message,
+                            }
+                            for check in report.checks
+                        ],
+                    },
+                    "command_run": first_check.command_run if first_check else "",
+                    "output_observed": first_check.output_observed if first_check else "",
+                    "result": first_check.result.value if first_check else "SKIP",
+                }
+
             prompt = context.get("prompt", item.description)
+            prev_results = context.get("previous_results", [])
+            if prev_results:
+                summaries = []
+                for i, r in enumerate(prev_results):
+                    text = _extract_result_text(r)
+                    if text:
+                        summaries.append(f"步骤{i + 1}输出: {text}")
+                if summaries:
+                    prompt = (
+                        prompt
+                        + "\n\n【前序步骤已完成，结果如下，请依据实际路径继续执行】\n"
+                        + "\n".join(summaries)
+                    )
             return await self._run_agent_with_visibility(
                 agent=agent,
                 messages=[{"role": "user", "content": prompt}],
@@ -275,7 +353,13 @@ class CoordinatorMode:
                 description=f"调查: {user_request}",
                 phase=WorkflowPhase.RESEARCH,
                 target_topics={user_request[:50]},
-                context={"prompt": f"请调查并分析以下需求：{user_request}"},
+                context={
+                    "prompt": (
+                        f"请调查并分析以下需求：{user_request}\n\n"
+                        "注意：当前环境为 Windows，如需执行命令请使用 Windows 命令（dir/type/python）"
+                        "或 Python 脚本，禁止使用 Unix 专有命令（ls/head/grep/fc-list 等）。"
+                    )
+                },
             )
         ]
 
@@ -317,6 +401,11 @@ class CoordinatorMode:
 - 必须具体明确，不能说"基于你的发现"
 - 每个步骤必须有可执行的命令或操作
 - 验证步骤必须实际运行，不能只读代码
+- 当前运行环境为 Windows，禁止在 prompt 中使用 Unix 命令（head/tail/ls/grep/fc-list/find /usr 等）
+- 如需列举文件或检查目录，使用 Python 代码（通过 bash_command 工具）或 Windows 命令（dir、type）
+- 每个步骤的 prompt 必须明确写出：输入文件的完整路径、预期生成的输出文件完整路径（无首尾空格）
+- 步骤间有依赖时，后续步骤的 prompt 必须说明"前序步骤将提供实际路径，请以实际收到的路径为准"
+- 文件路径不得包含前后多余的空格或换行符
 """
 
         try:
@@ -415,12 +504,13 @@ class CoordinatorMode:
 
                 for msg in chunk_messages:
                     collected_messages.append(msg)
-                    if isinstance(msg, ToolMessage) or type(msg).__name__ == "ToolMessage":
+                    msg_type = type(msg).__name__
+                    if msg_type == "ToolMessage" or (hasattr(msg, "name") and not getattr(msg, "tool_calls", None)):
                         self._print_tool_result(msg, label)
-                    elif isinstance(msg, AIMessage) or type(msg).__name__ == "AIMessage":
+                    elif msg_type in {"AIMessage", "AIMessageChunk"} or hasattr(msg, "tool_calls") or hasattr(msg, "content"):
                         final_content = self._print_ai_message(msg, seen_tool_calls, final_content, label)
         except Exception as e:
-            logger.warning("%s 流式执行失败: %s", label, e)
+            print(f"\n└─ [{label}] 流式执行失败: {e}", flush=True)
 
         return {"messages": collected_messages, "content": final_content}
 
@@ -441,19 +531,21 @@ class CoordinatorMode:
                     seen_tool_calls.add(tool_call_id)
                 name = tool_call.get("name", "unknown")
                 args = tool_call.get("args", {})
-                logger.info("[%s] 调用工具: %s %s", label, name, self._format_args(args))
+                print(f"\n┌─ [{label}] 调用工具: {name}", flush=True)
+                if args:
+                    print(f"│  参数: {self._format_args(args)}", flush=True)
 
         content = getattr(msg, "content", "")
         if isinstance(content, str) and content.strip() and content != current_content:
             current_content = content
-            logger.info("[%s] AI 片段: %s", label, self._truncate_text(content, 500))
+            print(f"\n└─ [{label}] AI: {self._truncate_text(content, 500)}", flush=True)
 
         return current_content
 
     def _print_tool_result(self, msg: Any, label: str) -> None:
         name = getattr(msg, "name", "tool")
         content = getattr(msg, "content", "")
-        logger.info("[%s] 工具结果: [%s] %s", label, name, self._truncate_text(str(content), 500))
+        print(f"\n└─ [{label}] 工具结果: [{name}] {self._truncate_text(str(content), 500)}", flush=True)
 
     def _format_args(self, args: Dict[str, Any]) -> str:
         if not args:
@@ -494,15 +586,41 @@ class CoordinatorMode:
 
     def _plan_verification(self, spec: Dict[str, Any], impl_results: List[Any]) -> List[WorkItem]:
         """根据规范和实现结果规划验证工作单元。"""
+        verification_plan = spec.get("verification_plan", [])
+        if not verification_plan:
+            return [
+                WorkItem(
+                    description="验证实现结果",
+                    phase=WorkflowPhase.VERIFICATION,
+                    context={
+                        "prompt": (
+                            "请执行实际验证，不要只做口头总结。\n"
+                            f"请验证以下实现结果：{impl_results}\n"
+                            "要求：必须运行命令、观察输出、给出 PASS/FAIL 结论。"
+                        ),
+                        "spec": spec,
+                    },
+                )
+            ]
+
         return [
             WorkItem(
-                description="验证实现结果",
+                description=step.get("name", "验证步骤"),
                 phase=WorkflowPhase.VERIFICATION,
                 context={
-                    "prompt": f"请验证以下实现是否正确：{impl_results}",
+                    "prompt": (
+                        "你是严格的验证执行器。请只执行以下验证命令并报告结果，"
+                        "不要总结性复述实现过程。\n"
+                        f"验证名称：{step.get('name', '')}\n"
+                        f"命令：{step.get('command', '')}\n"
+                        f"期望输出：{step.get('expected_output', '')}\n"
+                        "输出格式必须包含 Command run / Output observed / Result。"
+                    ),
                     "spec": spec,
+                    "verification_step": step,
                 },
             )
+            for step in verification_plan
         ]
 
     def _collect_results(self, items: List[WorkItem], raw_results: List) -> List[Any]:

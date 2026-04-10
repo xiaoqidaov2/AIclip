@@ -1,7 +1,4 @@
-"""任务类型系统 - 定义任务类型、状态机和统一 Task 接口。
-
-任务状态机: pending → running → completed/failed/killed
-"""
+"""Task type and state definitions."""
 
 from __future__ import annotations
 
@@ -14,7 +11,6 @@ from typing import Any, Callable, Dict, Optional
 
 
 class TaskType(str, Enum):
-    """7 种任务类型。"""
     LOCAL_BASH = "local_bash"
     LOCAL_AGENT = "local_agent"
     REMOTE_AGENT = "remote_agent"
@@ -25,15 +21,11 @@ class TaskType(str, Enum):
 
 
 class TaskStatus(str, Enum):
-    """任务状态机。"""
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     KILLED = "killed"
-
-    # ------ 合法状态转移 ------
-    _transitions: dict  # type hint only, actual stored on class
 
     def can_transition_to(self, target: TaskStatus) -> bool:
         return target in _TRANSITIONS.get(self, set())
@@ -42,7 +34,6 @@ class TaskStatus(str, Enum):
 _TRANSITIONS: Dict[TaskStatus, set] = {
     TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.KILLED},
     TaskStatus.RUNNING: {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.KILLED},
-    # 终态不可再转移
     TaskStatus.COMPLETED: set(),
     TaskStatus.FAILED: set(),
     TaskStatus.KILLED: set(),
@@ -50,29 +41,27 @@ _TRANSITIONS: Dict[TaskStatus, set] = {
 
 
 class TaskError(Exception):
-    """任务操作异常。"""
+    pass
 
 
 @dataclass
 class TaskInstance:
-    """一个具体的任务实例（运行态）。"""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     name: str = ""
     task_type: TaskType = TaskType.LOCAL_AGENT
     status: TaskStatus = TaskStatus.PENDING
     result: Any = None
     error: Optional[str] = None
-    progress: float = 0.0          # 0-1
+    progress: float = 0.0
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     finished_at: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    # ---- 状态转移 ----
     def transition_to(self, target: TaskStatus) -> None:
         if not self.status.can_transition_to(target):
             raise TaskError(
-                f"非法状态转移: {self.status.value} → {target.value} (task={self.id})"
+                f"Illegal status transition {self.status.value} -> {target.value} (task={self.id})"
             )
         self.status = target
         now = time.time()
@@ -109,8 +98,6 @@ class TaskInstance:
 
 
 class Task(ABC):
-    """统一的 Task 接口 — 每种 TaskType 对应一个实现。"""
-
     @property
     @abstractmethod
     def name(self) -> str: ...
@@ -121,24 +108,20 @@ class Task(ABC):
 
     @abstractmethod
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
-        """执行任务，返回结果。"""
         ...
 
     @abstractmethod
     async def kill(self, instance: TaskInstance) -> None:
-        """终止正在运行的任务。"""
         ...
 
 
-# ======================= 内置 Task 实现 =======================
-
 class LocalBashTask(Task):
-    """本地 Shell 命令任务。"""
     name = "LocalBash"
     task_type = TaskType.LOCAL_BASH
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
         import asyncio
+
         cmd = context.get("command", "")
         timeout = context.get("timeout", 30)
         proc = await asyncio.create_subprocess_shell(
@@ -150,7 +133,7 @@ class LocalBashTask(Task):
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             proc.kill()
-            raise TaskError(f"命令超时 ({timeout}s): {cmd}")
+            raise TaskError(f"Command timed out ({timeout}s): {cmd}")
         return {
             "stdout": stdout.decode(errors="replace"),
             "stderr": stderr.decode(errors="replace"),
@@ -162,28 +145,24 @@ class LocalBashTask(Task):
 
 
 class LocalAgentTask(Task):
-    """本地 Agent 子任务 — 协调器 spawn 的 worker。"""
     name = "LocalAgent"
     task_type = TaskType.LOCAL_AGENT
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
-        # Worker 执行逻辑由 coordinator 和 worker 模块驱动
-        # 这里只定义接口，实际调用在 worker.py
-        raise NotImplementedError("LocalAgentTask.execute 由 WorkerManager 驱动")
+        raise NotImplementedError("LocalAgentTask.execute is driven by WorkerManager")
 
     async def kill(self, instance: TaskInstance) -> None:
         instance.kill()
 
 
 class InProcessTeammateTask(Task):
-    """进程内协作任务（同步执行，共享内存）。"""
     name = "InProcessTeammate"
     task_type = TaskType.IN_PROCESS_TEAMMATE
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
         func: Optional[Callable] = context.get("func")
         if func is None:
-            raise TaskError("InProcessTeammate 需要 context['func']")
+            raise TaskError("InProcessTeammate requires context['func']")
         args = context.get("args", ())
         kwargs = context.get("kwargs", {})
         return func(*args, **kwargs)
@@ -193,7 +172,6 @@ class InProcessTeammateTask(Task):
 
 
 class LocalWorkflowTask(Task):
-    """本地工作流脚本任务。"""
     name = "LocalWorkflow"
     task_type = TaskType.LOCAL_WORKFLOW
 
@@ -202,8 +180,7 @@ class LocalWorkflowTask(Task):
         results = []
         for i, step in enumerate(steps):
             instance.progress = i / max(len(steps), 1)
-            result = step(context)
-            results.append(result)
+            results.append(step(context))
         return results
 
     async def kill(self, instance: TaskInstance) -> None:
@@ -211,12 +188,10 @@ class LocalWorkflowTask(Task):
 
 
 class MonitorMCPTask(Task):
-    """MCP 监控任务。"""
     name = "MonitorMCP"
     task_type = TaskType.MONITOR_MCP
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
-        # 占位 — 后续对接 MCP 协议
         return {"status": "monitoring", "target": context.get("target")}
 
     async def kill(self, instance: TaskInstance) -> None:
@@ -224,13 +199,11 @@ class MonitorMCPTask(Task):
 
 
 class DreamTask(Task):
-    """后台推理 / 反思任务。"""
     name = "Dream"
     task_type = TaskType.DREAM
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
         prompt = context.get("prompt", "")
-        # 占位 — 可对接低优先级 LLM 调用
         return {"dream_prompt": prompt, "insight": None}
 
     async def kill(self, instance: TaskInstance) -> None:
@@ -238,12 +211,10 @@ class DreamTask(Task):
 
 
 class RemoteAgentTask(Task):
-    """远程 Agent 任务（通过 HTTP/gRPC 调用）。"""
     name = "RemoteAgent"
     task_type = TaskType.REMOTE_AGENT
 
     async def execute(self, instance: TaskInstance, context: Dict[str, Any]) -> Any:
-        # 占位 — 后续对接远程 Agent 协议
         endpoint = context.get("endpoint")
         payload = context.get("payload")
         return {"endpoint": endpoint, "payload": payload, "response": None}

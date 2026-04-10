@@ -101,28 +101,8 @@ class CLIApp:
         self.renderer.show_status("协调器启动...")
 
         try:
-            result = asyncio.run(self._run_coordinator_async(request))
+            asyncio.run(self._run_coordinator_async(request))
             self.renderer.clear_status()
-
-            # 展示阶段结果
-            phases = result.get("phases", {})
-            for phase_name, phase_results in phases.items():
-                print(f"\n{'='*40}")
-                print(f"阶段: {phase_name}")
-                print(f"{'='*40}")
-                for i, r in enumerate(phase_results):
-                    summary = str(r)[:200] if r else "(无结果)"
-                    print(f"  [{i+1}] {summary}")
-
-            # 展示 Worker 状态
-            workers = result.get("workers", [])
-            if workers:
-                print(f"\n--- Workers ({len(workers)}) ---")
-                for w in workers:
-                    elapsed = f"{w['elapsed']:.1f}s" if w.get("elapsed") else "-"
-                    print(f"  {w['name']} [{w['status']}] {elapsed}")
-
-            print()
 
         except Exception as e:
             self.renderer.clear_status()
@@ -145,10 +125,19 @@ class CLIApp:
         if not notifications:
             return
 
-        self.renderer.clear_status()
         for notification in notifications:
-            print(f"\n└─ [{notification.status.value}] {notification.summary}")
-        self.renderer.show_status("协调器运行中...")
+            summary = notification.summary
+            if summary.startswith("进入阶段:"):
+                phase_name = summary.split(":", 1)[1].strip()
+                print(f"\n{'=' * 40}")
+                print(f"阶段: {phase_name}")
+                print(f"{'=' * 40}")
+            elif summary.startswith("阶段完成:"):
+                print(f"\n└─ {summary}")
+            elif summary.startswith("Worker ") and notification.status.value == "running":
+                print(f"\n┌─ {summary}")
+            else:
+                print(f"\n└─ [{notification.status.value}] {summary}")
 
     def _show_workers(self) -> None:
         """显示当前所有 Worker 状态。"""

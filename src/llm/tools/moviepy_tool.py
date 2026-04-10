@@ -30,7 +30,17 @@ class MoviePyTool:
         path = Path(video_path)
         return str(path.with_name(f"{path.stem}_{suffix}{path.suffix}"))
 
+    def _normalize_path(self, path_text: str, collapse_filename_separators: bool = False) -> str:
+        cleaned = path_text.strip().strip('"').strip("'")
+        path = Path(cleaned)
+        if not collapse_filename_separators:
+            return str(path)
+
+        filename = path.name.replace("_ ", "_").replace(" _", "_").replace("- ", "-").replace(" -", "-")
+        return str(path.with_name(filename))
+
     def _ensure_srt(self, subtitle_path: str) -> tuple[str, Optional[str]]:
+        subtitle_path = self._normalize_path(subtitle_path)
         path = Path(subtitle_path)
         if path.suffix.lower() == ".srt":
             # SRT file - need to ensure it's UTF-8 encoded for MoviePy
@@ -102,14 +112,21 @@ class MoviePyTool:
         if position != "bottom":
             raise ValueError("position currently only supports 'bottom'")
 
+        video_path = self._normalize_path(video_path)
+        subtitle_path = self._normalize_path(subtitle_path)
+        font_path = self._normalize_path(font_path)
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
+
         if not os.path.exists(font_path):
             raise ValueError(f"font_path does not exist: {font_path}")
 
-        source = VideoFileClip(video_path)
+        source = None
         final_clip = None
         subtitle_clip = None
         temp_subtitle_path = None
         try:
+            source = VideoFileClip(video_path)
             srt_path, temp_subtitle_path = self._ensure_srt(subtitle_path)
 
             subtitle_clip = SubtitlesClip(
@@ -144,14 +161,17 @@ class MoviePyTool:
                 subtitle_clip.close()
             if final_clip is not None:
                 final_clip.close()
-            source.close()
+            if source is not None:
+                source.close()
             if temp_subtitle_path is not None and os.path.exists(temp_subtitle_path):
                 os.unlink(temp_subtitle_path)
 
     def get_video_info(self, video_path: str) -> dict:
         """获取视频文件的基础信息。"""
-        clip = VideoFileClip(video_path)
+        video_path = self._normalize_path(video_path)
+        clip = None
         try:
+            clip = VideoFileClip(video_path)
             return {
                 "video_path": video_path,
                 "duration": float(clip.duration),
@@ -160,12 +180,17 @@ class MoviePyTool:
                 "has_audio": clip.audio is not None,
             }
         finally:
-            clip.close()
+            if clip is not None:
+                clip.close()
 
     def trim_video(self, video_path: str, start: float, end: float, output_path: Optional[str] = None) -> dict:
         """截取视频指定时间范围。"""
         if start >= end:
             raise ValueError("start must be less than end")
+
+        video_path = self._normalize_path(video_path)
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
 
         source = VideoFileClip(video_path)
         trimmed = None
@@ -194,6 +219,10 @@ class MoviePyTool:
         if start >= end:
             raise ValueError("start must be less than end")
 
+        video_path = self._normalize_path(video_path)
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
+
         source = VideoFileClip(video_path)
         cut = None
         try:
@@ -219,6 +248,10 @@ class MoviePyTool:
         """拼接多个视频文件。"""
         if not video_paths:
             raise ValueError("video_paths cannot be empty")
+
+        video_paths = [self._normalize_path(path) for path in video_paths]
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
 
         clips = [VideoFileClip(path) for path in video_paths]
         final_clip = None
@@ -250,6 +283,10 @@ class MoviePyTool:
         """调整视频分辨率。"""
         if width is None and height is None and scale is None:
             raise ValueError("width, height, or scale must be provided")
+
+        video_path = self._normalize_path(video_path)
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
 
         source = VideoFileClip(video_path)
         resized = None
@@ -294,6 +331,10 @@ class MoviePyTool:
             raise ValueError("either x2 or width must be provided")
         if y2 is None and height is None:
             raise ValueError("either y2 or height must be provided")
+
+        video_path = self._normalize_path(video_path)
+        if output_path:
+            output_path = self._normalize_path(output_path, collapse_filename_separators=True)
 
         source = VideoFileClip(video_path)
         cropped = None

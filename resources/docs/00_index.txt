@@ -1,0 +1,19 @@
+工具说明索引
+
+1. transcribe_audio.txt - 语音转写工具
+2. generate_subtitle_srt.txt - SRT 字幕生成工具
+3. generate_subtitle_vtt.txt - VTT 字幕生成工具
+4. generate_subtitle.txt - 通用字幕生成工具
+5. get_video_info.txt - 视频信息查询工具
+6. trim_video.txt - 截取视频工具
+7. cutout_video.txt - 删除片段工具
+8. concatenate_videos.txt - 视频拼接工具
+9. resize_video.txt - 视频缩放工具
+10. crop_video.txt - 视频裁剪工具
+11. add_subtitles.txt - 字幕烧录工具
+12. read_file.txt - 文件读取工具
+13. edit_file.txt - 文件编辑工具
+14. grep_file.txt - 文件检索工具
+15. bash_command.txt - Shell 命令工具
+
+每个文件都描述对应工具的能力、适用场景、输入输出和使用注意事项。

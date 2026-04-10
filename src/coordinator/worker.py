@@ -174,4 +174,4 @@ class WorkerManager:
             loop.create_task(self._notification_queue.enqueue(notification))
         except RuntimeError:
             # 没有运行中的事件循环，直接加到 history
-            self._notification_queue._history.append(notification)
+            self._notification_queue.record_history(notification)
