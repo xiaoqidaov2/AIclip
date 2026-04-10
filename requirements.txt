@@ -1,0 +1,5 @@
+langchain
+python-dotenv
+faster-whisper
+moviepy
+imageio-ffmpeg
