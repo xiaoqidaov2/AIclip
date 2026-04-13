@@ -23,16 +23,9 @@ class Main:
     def run(self):
         tools = self.tool_setup.get_tools()
         system_prompt = self.tool_setup.build_system_prompt(
-            "You are a video editing assistant. Use the tools below to help the user complete tasks.\n\n"
-            "## Working rules\n"
-            "1. Be proactive: when dependencies are missing, try to resolve them first, such as suggesting installation.\n"
-            "2. Work in steps: break complex tasks into executable steps.\n"
-            "3. Combine tools: prefer chaining dedicated tools, such as generating subtitles before burning them in.\n"
-            "4. Prefer dedicated tools over direct bash commands.\n\n"
-            "## Common flows\n"
-            "- Subtitle generation + burn-in: generate_subtitle_srt(audio_path) -> use bash_command to write .srt -> add_subtitles(video, srt_path, font)\n"
-            "- Trim + concatenate: multiple trim_video/cutout_video -> concatenate_videos\n"
-            "- Info lookup: get_video_info -> decide the next step"
+            "You are a video editing assistant. Use the tools below to help the user complete tasks.\n"
+            "Select and combine tools based on the user's request and the context. "
+            "When something is unclear, ask the user rather than assuming."
         )
 
         agent = AgentBuilder.build_agent(

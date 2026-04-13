@@ -1,7 +1,47 @@
 list_directory 目录查看工具
 
-这个工具用于查看指定目录下的文件和文件夹，并返回结构化结果。它比直接用 shell 更稳定，也更适合让协调器判断下一步应该读哪个文件、处理哪个输出，或者确认某个结果文件是否已经生成。
+列出指定目录下的文件和文件夹，返回结构化的条目信息。不修改任何文件。
 
-默认情况下，工具不会显示隐藏文件和隐藏文件夹；如果你需要查看 `.env`、`.gitignore`、`.claude` 这类隐藏项，可以把 `include_hidden` 设为 `true`。返回结果会包含每个条目的名称、路径、类型、是否隐藏、修改时间，文件还会附带大小信息。
+## 参数
 
-这个工具适合做目录探索、结果确认、输出文件检查和路径定位。对于文件保存、字幕生成、视频导出这类任务，它通常是比 `bash_command` 更合适的第一选择。
+- directory_path（可选）：要列出的目录路径，默认为当前工作目录 "."。
+- include_hidden（可选）：是否包含隐藏文件和隐藏文件夹，默认 false。隐藏项的判断规则：文件名以 "." 开头，或在 Windows 上具有隐藏文件属性（FILE_ATTRIBUTE_HIDDEN）。
+
+## 返回值
+
+返回一个 dict，包含以下字段：
+
+- ok：是否成功（布尔值）。
+- summary：操作摘要（字符串），包含条目数量和目录路径。
+- content：格式化的文本列表（字符串），每行一个条目，格式为 "[D] 目录名" 或 "[F] 文件名 - N bytes"，隐藏项附加 "(hidden)" 标记。
+- directory_path：规范化后的目录路径（字符串）。
+- include_hidden：实际使用的 include_hidden 值（布尔值）。
+- entries：结构化条目列表（数组），每个条目包含：
+  - name：文件或目录名（字符串）。
+  - path：完整路径（字符串）。
+  - type："file" 或 "directory"（字符串）。
+  - hidden：是否为隐藏项（布尔值）。
+  - modified_time：最后修改时间，ISO 8601 格式，精确到秒（字符串）。
+  - size：文件大小，单位字节（整数），仅文件条目有此字段，目录条目无此字段。
+
+## 输出示例
+
+```json
+{
+  "ok": true,
+  "summary": "Listed 4 item(s) in C:/Users/admin/Videos",
+  "content": "[D] clips\n[F] demo.mp4 - 2856604 bytes\n[F] demo.srt - 180 bytes\n[F] demo_subbed.mp4 - 672104 bytes",
+  "directory_path": "C:/Users/admin/Videos",
+  "include_hidden": false,
+  "entries": [
+    {"name": "clips", "path": "C:/Users/admin/Videos/clips", "type": "directory", "hidden": false, "modified_time": "2026-04-13T10:00:00"},
+    {"name": "demo.mp4", "path": "C:/Users/admin/Videos/demo.mp4", "type": "file", "hidden": false, "modified_time": "2026-04-13T09:30:00", "size": 2856604}
+  ]
+}
+```
+
+## 注意事项
+
+- 条目按以下规则排序：目录排在文件前面，同类型内按名称字母顺序（不区分大小写）排列。
+- 路径不存在或不是目录时，ok 为 false，entries 为空数组。
+- include_hidden=false 时，.env、.gitignore、.claude 等隐藏文件不会出现在结果中。设为 true 可查看这些文件。
