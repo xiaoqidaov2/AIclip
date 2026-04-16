@@ -1,0 +1,19 @@
+add_project_comment
+
+Add a collaboration comment to a project file.
+
+When to use:
+- Add a review note or collaboration comment.
+
+Inputs:
+- `project_path`
+- `comment_id`
+- `author`
+- `text`
+- `anchor`: optional
+- `timecode`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

@@ -1,0 +1,18 @@
+update_project_effect
+
+Update a visual effect in a project file.
+
+When to use:
+- Adjust effect target, kind, or parameters.
+
+Inputs:
+- `project_path`
+- `effect_id`
+- `target_id`: optional
+- `kind`: optional
+- `parameters`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

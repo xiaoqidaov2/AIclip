@@ -1,0 +1,30 @@
+add_project_clip
+
+Purpose
+- Insert a clip that references an existing project asset onto a timeline track.
+
+Inputs
+- `project_path`
+- `clip_id`
+- `asset_id`
+- `start`
+- `end`
+- `track_id`
+- `source_in`: optional
+- `source_out`: optional
+- `speed`: optional
+- `track_kind`: optional, default `video`
+- `track_name`: optional
+- `transform`: optional, supports keys like `x`, `y`, `scale`, `opacity`
+- `insert_index`: optional
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `validation`
+- `render_state`
+
+Notes
+- The referenced `asset_id` must already exist in the project.
+- Use this after `add_project_asset` to place downloaded or local media on the timeline.

@@ -1,36 +1,22 @@
-transcribe_audio 语音转写工具
+transcribe_audio
 
-将音频或视频文件中的语音内容识别为带时间戳的文本片段。底层使用 faster-whisper 模型（base 规格，CPU 推理，int8 量化）。
+Purpose
+- Convert source audio into subtitle cues stored in the project.
 
-## 参数
+Inputs
+- `project_path`
+- `language`: optional language code
+- `audio_path`: optional override source path
+- `model_size`: optional Whisper model size, default `tiny`
+- `output_path`: optional project save path
+- `replace_existing`: optional, default `true`
 
-- audio_path（必填）：音频或视频文件的路径，支持 mp4、mp3、wav 等常见格式。
-- language（可选）：语言代码，默认 "zh"（中文）。可传入其他 BCP-47 语言代码，如 "en"、"ja"。
+Returns
+- `decision`
+- `payload`
+- `render_state`
+- `state` with `subtitle_source_present` and `subtitle_count`
 
-## 返回值
-
-返回一个 dict，包含以下字段：
-
-- text：所有识别片段拼接后的纯文本，已去除首尾空白。
-- language：模型检测到的语言代码（字符串）。
-- language_probability：模型对检测语言的置信度（0.0 到 1.0 的浮点数）。
-
-注意：返回的 text 是纯文本，不包含时间戳，也不生成任何文件。如果需要带时间轴的字幕文件，应使用 generate_subtitle_srt 或 generate_subtitle_vtt。
-
-## 输出示例
-
-```json
-{
-  "text": "今天我们来讲一下视频剪辑的基本流程。首先需要准备好素材。",
-  "language": "zh",
-  "language_probability": 0.98
-}
-```
-
-## 注意事项
-
-- 识别质量受录音清晰度、背景噪声、口音、语速和多人同时说话等因素影响。
-- 模型首次运行时会从 HuggingFace 下载权重文件，需要网络连接。下载完成后会缓存到本地，后续调用不再重复下载。
-- 对于较长的音频，识别耗时会相应增加，CPU 推理速度较慢。
-- 如果音频文件包含视频轨道，模型会自动提取音频部分进行识别，无需预先分离。
-- language 参数影响识别准确率，如果已知语言建议明确指定，不要依赖自动检测。
+Notes
+- Use this when the project has no subtitle source yet.
+- This is the core fallback for subtitle-driven edits.

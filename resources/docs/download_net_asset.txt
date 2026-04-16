@@ -1,0 +1,33 @@
+download_net_asset
+
+Download a stock media file to the local filesystem.
+
+When to use:
+- After search_net_asset has returned results and the desired asset is chosen.
+- Before calling add_project_asset to register the file in a project.
+
+Inputs:
+- `download_url` — direct file URL from a search result's `download_url` field (required)
+- `save_to`      — destination directory path; defaults to "tmp/" (optional)
+- `filename`     — override the saved filename; inferred from URL if omitted (optional)
+- `attribution`  — attribution text from the search result (optional, stored in return value)
+
+Returns (on success):
+- `ok`: true
+- `local_path`: absolute path of the saved file
+- `filename`: final filename on disk
+- `attribution`: attribution text (pass this to add_project_asset metadata)
+
+Returns (on error):
+- `ok`: false
+- `error`: human-readable reason (e.g. network timeout, disk full)
+
+Workflow after download:
+1. Use `local_path` as the `asset_path` when calling add_project_asset.
+2. Include `attribution` in the asset metadata, e.g.:
+     { "attribution": "<attribution text>", "source": "pexels" }
+
+Notes:
+- Files are saved once; repeated calls with the same URL skip re-downloading.
+- Default destination is "tmp/" relative to the project working directory.
+- Large video files may take several seconds to download.

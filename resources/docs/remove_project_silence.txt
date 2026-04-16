@@ -1,0 +1,20 @@
+remove_project_silence
+
+Purpose
+- Remove gaps between subtitle cues and rebuild the main timeline track.
+
+Inputs
+- `project_path`
+- `track_id`: optional
+- `output_path`: optional
+- `padding`: optional seconds added around each cue
+
+Returns
+- `decision`
+- `payload`
+- `render_state`
+- `state` with `segment_count`, `timeline_duration`, `subtitle_count`
+
+Notes
+- Requires subtitle cues.
+- Use after transcription when the goal is to cut silent sections.

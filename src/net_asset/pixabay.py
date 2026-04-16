@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import os
+from typing import Any, Dict, List
+
+import requests
+
+from .providers import AssetResult, BaseProvider
+
+_IMG_SEARCH = "https://pixabay.com/api/"
+_VID_SEARCH = "https://pixabay.com/api/videos/"
+_TIMEOUT = 10
+
+
+class PixabayProvider(BaseProvider):
+    name = "pixabay"
+
+    def __init__(self) -> None:
+        self._api_key = os.getenv("PIXABAY_API_KEY", "")
+
+    def is_available(self) -> bool:
+        return bool(self._api_key)
+
+    def search(
+        self,
+        query: str,
+        media_type: str = "video",
+        per_page: int = 10,
+        **kwargs,
+    ) -> List[AssetResult]:
+        if not self.is_available():
+            raise RuntimeError("PIXABAY_API_KEY not set")
+
+        per_page = max(3, min(per_page, 200))
+
+        if media_type == "image":
+            return self._search_images(query, per_page)
+        return self._search_videos(query, per_page)
+
+    def _search_images(self, query: str, per_page: int) -> List[AssetResult]:
+        params: Dict[str, Any] = {
+            "key": self._api_key,
+            "q": query,
+            "image_type": "photo",
+            "per_page": per_page,
+            "safesearch": "true",
+        }
+        resp = requests.get(_IMG_SEARCH, params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("hits", []):
+            tags = [t.strip() for t in item.get("tags", "").split(",") if t.strip()]
+            results.append(AssetResult(
+                id=str(item["id"]),
+                title=", ".join(tags[:3]) or "Pixabay Image",
+                media_type="image",
+                provider=self.name,
+                preview_url=item.get("previewURL", ""),
+                download_url=item.get("largeImageURL", item.get("webformatURL", "")),
+                page_url=item.get("pageURL", ""),
+                author=item.get("user", ""),
+                attribution=f"Image by {item.get('user', '')} on Pixabay",
+                license="Pixabay License",
+                width=item.get("imageWidth"),
+                height=item.get("imageHeight"),
+                tags=tags,
+            ))
+        return results
+
+    def _search_videos(self, query: str, per_page: int) -> List[AssetResult]:
+        params: Dict[str, Any] = {
+            "key": self._api_key,
+            "q": query,
+            "per_page": per_page,
+            "safesearch": "true",
+        }
+        resp = requests.get(_VID_SEARCH, params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        results = []
+        for item in data.get("hits", []):
+            videos = item.get("videos", {})
+            file_info = videos.get("medium") or videos.get("small") or {}
+            download_url = file_info.get("url", "")
+            preview_url = file_info.get("thumbnail", "")
+            if not download_url:
+                continue
+            tags = [t.strip() for t in item.get("tags", "").split(",") if t.strip()]
+            results.append(AssetResult(
+                id=str(item["id"]),
+                title=", ".join(tags[:3]) or "Pixabay Video",
+                media_type="video",
+                provider=self.name,
+                preview_url=preview_url,
+                download_url=download_url,
+                page_url=item.get("pageURL", ""),
+                author=item.get("user", ""),
+                attribution=f"Video by {item.get('user', '')} on Pixabay",
+                license="Pixabay License",
+                duration=item.get("duration"),
+                width=file_info.get("width"),
+                height=file_info.get("height"),
+                tags=tags,
+            ))
+        return results

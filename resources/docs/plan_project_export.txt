@@ -1,0 +1,17 @@
+plan_project_export
+
+Purpose
+- Plan preview, final, and sidecar export paths.
+
+Inputs
+- `project_path`
+- `preset_id`
+- `output_dir`
+- `base_name`: optional
+
+Returns
+- `decision`
+- `render_state`
+- planned preview path
+- planned final path
+- planned sidecar path

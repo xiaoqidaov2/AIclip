@@ -1,0 +1,16 @@
+lock_project_comment
+
+Lock or unlock a collaboration comment.
+
+When to use:
+- Freeze a comment during review or allow edits again.
+
+Inputs:
+- `project_path`
+- `comment_id`
+- `locked`: `true` or `false`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

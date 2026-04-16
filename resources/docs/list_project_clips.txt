@@ -1,0 +1,22 @@
+list_project_clips
+
+Purpose
+- List timeline clips with optional filters.
+
+Inputs
+- `project_path`
+- `track_id`: optional
+- `track_kind`: optional
+- `asset_id`: optional
+- `min_duration`: optional
+- `max_duration`: optional
+- `limit`: optional, default `100`
+
+Returns
+- `decision`
+- `validation`
+- `render_state`
+- `payload.clips`
+
+Notes
+- Use this to answer questions like “which clips are longer than 5 seconds” or “what is on the overlay track”.

@@ -1,20 +1,21 @@
-from typing import Any, Dict, Iterator
-import sys
+from __future__ import annotations
+
 import json
+import sys
 import threading
 import time
+from typing import Any, Dict, Iterator
 
 from langchain_core.messages import AIMessage, ToolMessage
 
 
 class CLIRenderer:
-    """Render agent responses with animated loading status, structured sections, and smart truncation."""
+    """Render agent responses with a spinner and compact structured summaries."""
 
     MAX_SUMMARY_LENGTH = 200
-    # Use ASCII-compatible spinner for Windows
     SPINNER_CHARS = ["|", "/", "-", "\\"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.verbose = False
         self._spinner_idx = 0
         self._current_status = ""
@@ -22,18 +23,16 @@ class CLIRenderer:
         self._spinner_running = False
         self._spinner_thread = None
         self._lock = threading.Lock()
-        self.last_tool_calls = []
-        self.last_tool_results = []
+        self.last_tool_calls: list[dict[str, Any]] = []
+        self.last_tool_results: list[Any] = []
 
     def set_verbose(self, enabled: bool) -> None:
         self.verbose = enabled
 
     def show_status(self, text: str) -> None:
-        """Show an animated transient status line."""
         with self._lock:
             self._current_status = text
             self._has_status = True
-
             if self._spinner_running:
                 return
 
@@ -42,7 +41,6 @@ class CLIRenderer:
             self._spinner_thread.start()
 
     def clear_status(self) -> None:
-        """Clear the current status line and stop spinner."""
         with self._lock:
             self._spinner_running = False
             self._has_status = False
@@ -53,7 +51,6 @@ class CLIRenderer:
         sys.stdout.flush()
 
     def _spin(self) -> None:
-        """Run spinner animation in background thread."""
         while True:
             with self._lock:
                 if not self._spinner_running:
@@ -66,49 +63,82 @@ class CLIRenderer:
             sys.stdout.flush()
             time.sleep(0.15)
 
-    def render_stream(self, stream_iterator: Iterator) -> tuple[str, list[Any]]:
-        """Render agent output from a stream, showing status and structured sections."""
+    def render_stream(self, stream_iterator_provider: Any) -> tuple[str, list[Any]]:
+        import time
+        max_consecutive_failures = 5  # 连续失败才算耗尽，有进展则重置
+        base_delay = 2
+
+        consecutive_failures = 0
         final_content = ""
-        collected_messages = []
-        tool_calls_seen = set()
-        self.last_tool_calls = []
-        self.last_tool_results = []
+        collected_messages: list[Any] = []
+        tool_calls_seen: set[str] = set()
 
-        try:
-            for chunk in stream_iterator:
-                if not isinstance(chunk, dict):
+        while consecutive_failures < max_consecutive_failures:
+            self.last_tool_calls = []
+            self.last_tool_results = []
+            made_progress = False
+
+            stream_iterator = stream_iterator_provider() if callable(stream_iterator_provider) else stream_iterator_provider
+
+            try:
+                for chunk in stream_iterator:
+                    if not isinstance(chunk, dict):
+                        continue
+
+                    made_progress = True
+                    messages = []
+                    if "model" in chunk:
+                        messages = chunk["model"].get("messages", [])
+                    elif "tools" in chunk:
+                        messages = chunk["tools"].get("messages", [])
+                    elif "agent" in chunk:
+                        messages = chunk["agent"].get("messages", [])
+                    elif "messages" in chunk:
+                        messages = chunk["messages"]
+
+                    for msg in messages:
+                        collected_messages.append(msg)
+                        msg_type = type(msg).__name__
+                        if msg_type == "ToolMessage":
+                            self._process_tool_result(msg)
+                            self.last_tool_results.append(getattr(msg, "content", ""))
+                        else:
+                            final_content = self._process_stream_message(msg, tool_calls_seen, final_content)
+                self.clear_status()
+                return final_content, collected_messages
+
+            except Exception as e:
+                self.clear_status()
+                error_str = str(e).lower()
+                is_retryable = (
+                    "429" in error_str
+                    or "rate limit" in error_str
+                    or "tpm limit" in error_str
+                    or "null value for" in error_str and "choices" in error_str
+                )
+
+                if is_retryable and callable(stream_iterator_provider):
+                    if made_progress:
+                        # 本次已成功传输部分数据，重置连续失败计数
+                        consecutive_failures = 0
+                    consecutive_failures += 1
+                    delay = base_delay * (2 ** (consecutive_failures - 1))
+                    print(
+                        f"\n[!] 触发频率限制或请求拥挤 (Rate Limit, 429). {delay} 秒后尝试重新连接"
+                        f" (连续失败 {consecutive_failures}/{max_consecutive_failures} 次)...",
+                        flush=True,
+                    )
+                    time.sleep(delay)
                     continue
-
-                messages = []
-                if "model" in chunk:
-                    messages = chunk["model"].get("messages", [])
-                elif "tools" in chunk:
-                    messages = chunk["tools"].get("messages", [])
-                elif "agent" in chunk:
-                    messages = chunk["agent"].get("messages", [])
-                elif "messages" in chunk:
-                    messages = chunk["messages"]
-
-                for msg in messages:
-                    collected_messages.append(msg)
-                    msg_type = type(msg).__name__
-                    if msg_type == "ToolMessage":
-                        self._process_tool_result(msg)
-                        self.last_tool_results.append(getattr(msg, "content", ""))
-                    else:
-                        final_content = self._process_stream_message(msg, tool_calls_seen, final_content)
-
-        except Exception as e:
-            self.clear_status()
-            print(f"\n流式处理出错: {e}")
+                else:
+                    print(f"\n流式处理出错: {e}")
+                    return final_content, collected_messages
 
         self.clear_status()
         return final_content, collected_messages
 
     def _process_stream_message(self, msg: Any, tool_calls_seen: set, current_content: str) -> str:
-        msg_type = type(msg).__name__
-
-        if msg_type == "AIMessage":
+        if type(msg).__name__ == "AIMessage":
             tool_calls = getattr(msg, "tool_calls", None)
             if tool_calls:
                 for tc in tool_calls:
@@ -120,9 +150,8 @@ class CLIRenderer:
                         self._show_tool_call(name, args)
 
             content = getattr(msg, "content", "")
-            if content and isinstance(content, str) and content.strip():
+            if isinstance(content, str) and content.strip():
                 current_content = content
-
         return current_content
 
     def _process_tool_result(self, msg: Any) -> None:
@@ -143,10 +172,10 @@ class CLIRenderer:
 
     def _show_tool_call(self, name: str, args: Dict) -> None:
         self.clear_status()
-        print(f"\n┌─ 调用工具: {name}")
+        print(f"\n├─ 调用工具: {name}")
         if args:
             args_str = self._format_args(args)
-            print(f"│  参数: {args_str}")
+            print(f"├─ 参数: {args_str}")
         self.show_status(f"正在执行 {name}...")
         self.last_tool_calls.append({"name": name, "args": args})
 
@@ -169,10 +198,8 @@ class CLIRenderer:
             return ""
 
         final_content = ""
-
         for msg in messages:
             msg_type = type(msg).__name__
-
             if msg_type == "AIMessage":
                 tool_calls = getattr(msg, "tool_calls", None)
                 if tool_calls:
@@ -184,7 +211,6 @@ class CLIRenderer:
                 content = getattr(msg, "content", "")
                 if content:
                     final_content = content
-
             elif msg_type == "ToolMessage":
                 self._process_tool_result(msg)
 
@@ -200,30 +226,50 @@ class CLIRenderer:
             return "完成"
 
         text = str(content)
-
         try:
             data = json.loads(text)
             if isinstance(data, dict):
-                if "summary" in data:
-                    return data["summary"]
+                decision = data.get("decision")
+                if isinstance(decision, dict):
+                    parts = []
+                    for key in ("operation", "code", "status"):
+                        value = decision.get(key)
+                        if value not in (None, ""):
+                            parts.append(str(value))
+                    state = decision.get("state")
+                    if isinstance(state, dict):
+                        for key in ("project_path", "output_path", "media_path", "final_path"):
+                            value = state.get(key)
+                            if value not in (None, ""):
+                                parts.append(f"{key}={value}")
+                                break
+                    next_actions = decision.get("next_actions") or []
+                    if next_actions:
+                        parts.append(f"next={','.join(map(str, next_actions[:3]))}")
+                    if parts:
+                        return " | ".join(parts)
+
+                if "operation" in data and "status" in data:
+                    return f"{data['operation']} | {data['status']}"
+                if "code" in data:
+                    return str(data["code"])
+                if "status" in data:
+                    return str(data["status"])
                 if "ok" in data:
                     return "成功" if data["ok"] else "失败"
-                if "segment_count" in data and "format" in data:
-                    summary = f"已生成 {data['segment_count']} 段 {str(data['format']).upper()} 字幕"
-                    if "output_path" in data:
-                        summary += f"，已保存到 {data['output_path']}"
-                    return summary
-                if "text" in data and "language" in data:
-                    return f"已转录文本，语言: {data['language']}"
+
+                for key in ("project_path", "output_path", "media_path", "subtitle_path"):
+                    if key in data and data[key]:
+                        return f"{data.get('operation', 'tool')} | {key}={data[key]}"
         except (json.JSONDecodeError, TypeError):
             pass
 
         if len(text) <= self.MAX_SUMMARY_LENGTH:
             return text
-        return text[:self.MAX_SUMMARY_LENGTH - 3] + "..."
+        return text[: self.MAX_SUMMARY_LENGTH - 3] + "..."
 
 
-def render_stream_simple(stream_iterator: Iterator, verbose: bool = False) -> str:
+def render_stream_simple(stream_iterator_provider: Any, verbose: bool = False) -> str:
     renderer = CLIRenderer()
     renderer.set_verbose(verbose)
-    return renderer.render_stream(stream_iterator)
+    return renderer.render_stream(stream_iterator_provider)[0]

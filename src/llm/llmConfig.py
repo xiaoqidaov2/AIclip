@@ -23,4 +23,5 @@ class LLMConfig:
             temperature=self.temperature,
             openai_api_base=self.openai_api_base,
             openai_api_key=self.openai_api_key,
+            max_retries=5,
         )

@@ -1,0 +1,19 @@
+update_project_comment
+
+Update an existing project comment.
+
+When to use:
+- Edit the text, anchor, timecode, or lock state of a comment.
+
+Inputs:
+- `project_path`
+- `comment_id`
+- `text`: optional
+- `anchor`: optional
+- `timecode`: optional
+- `locked`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

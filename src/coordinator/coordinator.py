@@ -54,6 +54,73 @@ from .worker import WorkerManager
 from .context import ContextManager, ContextDecision
 from .verification import VerificationAgent
 
+
+def _extract_result_text(result: Any, max_chars: int = 400) -> str:
+    """Extract a compact text summary from structured agent results."""
+    if isinstance(result, dict):
+        decision = result.get("decision")
+        if isinstance(decision, dict):
+            parts = []
+            for key in ("operation", "code", "status"):
+                value = decision.get(key)
+                if value not in (None, ""):
+                    parts.append(str(value))
+            state = decision.get("state")
+            if isinstance(state, dict):
+                for key in ("project_path", "output_path", "media_path", "final_path"):
+                    value = state.get(key)
+                    if value not in (None, ""):
+                        parts.append(f"{key}={value}")
+                        break
+            next_actions = decision.get("next_actions") or []
+            if next_actions:
+                parts.append(f"next={','.join(map(str, next_actions[:3]))}")
+            if parts:
+                return " | ".join(parts)[:max_chars]
+        if "messages" in result:
+            parts = []
+            for msg in result["messages"]:
+                c = getattr(msg, "content", "")
+                if isinstance(c, str) and c.strip():
+                    parts.append(c.strip())
+            return " | ".join(parts)[:max_chars]
+        if "operation" in result and "status" in result:
+            return f"{result['operation']} | {result['status']}"[:max_chars]
+        if "code" in result:
+            return str(result["code"])[:max_chars]
+        if "content" in result:
+            content = result["content"]
+            if isinstance(content, dict) and content.get("operation") and content.get("status"):
+                return f"{content['operation']} | {content['status']}"[:max_chars]
+            return str(content)[:max_chars]
+        if "error" in result:
+            return f"[error] {result['error']}"
+    if isinstance(result, str):
+        text = result.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                decision = parsed.get("decision")
+                if isinstance(decision, dict):
+                    parts = []
+                    for key in ("operation", "code", "status"):
+                        value = decision.get(key)
+                        if value not in (None, ""):
+                            parts.append(str(value))
+                    if parts:
+                        return " | ".join(parts)[:max_chars]
+                if "operation" in parsed and "status" in parsed:
+                    return f"{parsed['operation']} | {parsed['status']}"[:max_chars]
+                if "code" in parsed:
+                    return str(parsed["code"])[:max_chars]
+                if "status" in parsed:
+                    return str(parsed["status"])[:max_chars]
+        return result[:max_chars]
+    return str(result)[:max_chars]
+
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -402,7 +469,7 @@ class CoordinatorMode:
 - 每个步骤必须有可执行的命令或操作
 - 验证步骤必须实际运行，不能只读代码
 - 当前运行环境为 Windows，禁止在 prompt 中使用 Unix 命令（head/tail/ls/grep/fc-list/find /usr 等）
-- 如需创建或覆盖文本文件，优先使用 write_file；如需列举文件或检查目录，使用 list_directory、Python 代码（通过 bash_command 工具）或 Windows 命令（dir、type）
+- 如需修改项目结构或渲染流程，优先使用 project 工具。避免直接使用 shell 或临时媒体处理路径。
 - 每个步骤的 prompt 必须明确写出：输入文件的完整路径、预期生成的输出文件完整路径（无首尾空格）
 - 步骤间有依赖时，后续步骤的 prompt 必须说明"前序步骤将提供实际路径，请以实际收到的路径为准"
 - 文件路径不得包含前后多余的空格或换行符
@@ -482,35 +549,72 @@ class CoordinatorMode:
         return {"result": f"执行: {messages[-1].get('content', '')}"}
 
     def _drain_stream_sync(self, agent: Any, messages: List[Dict[str, Any]], label: str) -> Any:
-        """Synchronously consume agent.stream so intermediate events are printed live."""
+        """Synchronously consume agent.stream so intermediate events are printed live.
+        Retries on rate limit (429). Counter resets if progress was made, so each
+        connection attempt gets its own budget of retries.
+        """
+        import time
+        max_consecutive_failures = 5
+        base_delay = 2
+
+        consecutive_failures = 0
         final_content = ""
         collected_messages: List[Any] = []
         seen_tool_calls: Set[str] = set()
 
-        try:
-            for chunk in agent.stream({"messages": messages}):
-                if not isinstance(chunk, dict):
+        while consecutive_failures < max_consecutive_failures:
+            made_progress = False
+
+            try:
+                for chunk in agent.stream({"messages": messages}):
+                    if not isinstance(chunk, dict):
+                        continue
+
+                    made_progress = True
+                    chunk_messages: List[Any] = []
+                    if "model" in chunk:
+                        chunk_messages = chunk["model"].get("messages", [])
+                    elif "tools" in chunk:
+                        chunk_messages = chunk["tools"].get("messages", [])
+                    elif "agent" in chunk:
+                        chunk_messages = chunk["agent"].get("messages", [])
+                    elif "messages" in chunk:
+                        chunk_messages = chunk["messages"]
+
+                    for msg in chunk_messages:
+                        collected_messages.append(msg)
+                        msg_type = type(msg).__name__
+                        if msg_type == "ToolMessage" or (hasattr(msg, "name") and not getattr(msg, "tool_calls", None)):
+                            self._print_tool_result(msg, label)
+                        elif msg_type in {"AIMessage", "AIMessageChunk"} or hasattr(msg, "tool_calls") or hasattr(msg, "content"):
+                            final_content = self._print_ai_message(msg, seen_tool_calls, final_content, label)
+
+                return {"messages": collected_messages, "content": final_content}
+
+            except Exception as e:
+                error_str = str(e).lower()
+                is_retryable = (
+                    "429" in error_str
+                    or "rate limit" in error_str
+                    or "tpm limit" in error_str
+                    or ("null value for" in error_str and "choices" in error_str)
+                )
+
+                if is_retryable:
+                    if made_progress:
+                        consecutive_failures = 0
+                    consecutive_failures += 1
+                    delay = base_delay * (2 ** (consecutive_failures - 1))
+                    print(
+                        f"\n[!] 触发频率限制或请求拥挤 (Rate Limit, 429). {delay} 秒后尝试重新连接"
+                        f" (连续失败 {consecutive_failures}/{max_consecutive_failures} 次)...",
+                        flush=True,
+                    )
+                    time.sleep(delay)
                     continue
-
-                chunk_messages: List[Any] = []
-                if "model" in chunk:
-                    chunk_messages = chunk["model"].get("messages", [])
-                elif "tools" in chunk:
-                    chunk_messages = chunk["tools"].get("messages", [])
-                elif "agent" in chunk:
-                    chunk_messages = chunk["agent"].get("messages", [])
-                elif "messages" in chunk:
-                    chunk_messages = chunk["messages"]
-
-                for msg in chunk_messages:
-                    collected_messages.append(msg)
-                    msg_type = type(msg).__name__
-                    if msg_type == "ToolMessage" or (hasattr(msg, "name") and not getattr(msg, "tool_calls", None)):
-                        self._print_tool_result(msg, label)
-                    elif msg_type in {"AIMessage", "AIMessageChunk"} or hasattr(msg, "tool_calls") or hasattr(msg, "content"):
-                        final_content = self._print_ai_message(msg, seen_tool_calls, final_content, label)
-        except Exception as e:
-            print(f"\n└─ [{label}] 流式执行失败: {e}", flush=True)
+                else:
+                    print(f"\n└─ [{label}] 流式执行失败: {e}", flush=True)
+                    return {"messages": collected_messages, "content": final_content}
 
         return {"messages": collected_messages, "content": final_content}
 

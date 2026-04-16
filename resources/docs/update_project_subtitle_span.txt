@@ -1,0 +1,20 @@
+update_project_subtitle_span
+
+Purpose
+- Update the style or text of one subtitle span.
+
+Inputs
+- `project_path`
+- `subtitle_id`
+- `span_id`
+- `text`: optional
+- `color`: optional
+- `bold`: optional
+- `italic`: optional
+- `underline`: optional
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `render_state`

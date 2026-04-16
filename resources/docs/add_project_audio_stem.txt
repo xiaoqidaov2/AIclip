@@ -1,0 +1,18 @@
+add_project_audio_stem
+
+Add an audio stem reference to a project file.
+
+When to use:
+- Register a dialogue, music, or effects stem in the project.
+
+Inputs:
+- `project_path`
+- `stem_id`
+- `role`
+- `asset_path`
+- `track_id`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

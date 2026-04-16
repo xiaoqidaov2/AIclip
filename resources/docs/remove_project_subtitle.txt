@@ -1,0 +1,14 @@
+remove_project_subtitle
+
+Purpose
+- Remove a subtitle cue from the project.
+
+Inputs
+- `project_path`
+- `subtitle_id`
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `render_state`

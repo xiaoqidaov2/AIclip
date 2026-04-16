@@ -1,0 +1,20 @@
+load_project
+
+Purpose
+- Load a project from JSON or XML.
+
+Inputs
+- `project_path`: path to `project.json` or `project.xml`.
+
+Returns
+- `decision`
+- `payload`
+- `validation`
+- `render_state`
+- `state` with `project_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`, `audio_stem_count`, `effect_count`, `comment_count`
+
+Notes
+- Use this before any edit that depends on the existing project structure.
+- Inspect `subtitle_source_present` and `subtitle_count` before trying subtitle edits.
+- If `subtitle_source_present` is false, call `transcribe_audio` instead of asking for a subtitle file.
+- If `audio_track_present` is false on a video project, rebuild the project from media.

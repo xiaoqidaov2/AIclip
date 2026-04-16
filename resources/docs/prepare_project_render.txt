@@ -1,0 +1,19 @@
+prepare_project_render
+
+Purpose
+- Validate the project before preview or final render.
+
+Inputs
+- `project_path`
+- `preview_path`: optional
+- `final_path`: optional
+
+Returns
+- `decision`
+- `validation`
+- `render_state`
+- `next_actions`
+
+Notes
+- Render only when `render_state.ready` is true.
+- Use `validation.errors` and `render_state.blockers` to decide what to fix.

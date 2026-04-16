@@ -1,0 +1,23 @@
+Project Core Contract
+
+Purpose
+- Keep agent behavior inside the project file model.
+- Use tool output, not chat text, to decide the next step.
+
+Decision order
+1. Read `decision`.
+2. Check `validation` and `render_state`.
+3. Use `state` and `next_actions`.
+4. Inspect `payload` only when you need the full project snapshot.
+
+Output rules
+- `message` and `summary` are display text only.
+- Prefer `code`, `status`, `state`, `render_state`, `validation`, and `next_actions`.
+- If `decision.render_state.ready` is false, do not render.
+- If the request needs subtitles and no subtitle source exists, use `transcribe_audio` first.
+- If the request is to cut silence, use `remove_project_silence` after subtitle cues exist.
+
+Project scope
+- The current core edits timeline, assets, subtitles, audio stems, effects, comments, metadata, and export presets.
+- Subtitle spans can be edited separately for local color and style changes.
+- Media bootstrap creates a project from raw media; it does not magically create a subtitle transcript.

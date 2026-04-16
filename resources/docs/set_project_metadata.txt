@@ -1,0 +1,19 @@
+set_project_metadata
+
+Update project metadata in the project file.
+
+When to use:
+- Change project-level fields such as title, owner, notes, tags, or delivery metadata.
+
+Inputs:
+- `project_path`
+- `metadata`: key/value map to merge
+- `output_path`: optional save path
+
+Returns:
+- updated project snapshot
+- `project_version`
+- `render_state`
+
+Notes:
+- This does not touch timeline clips.

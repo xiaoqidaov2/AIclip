@@ -1,0 +1,15 @@
+remove_project_audio_stem
+
+Remove an audio stem from a project file.
+
+When to use:
+- Remove an obsolete stem from the project.
+
+Inputs:
+- `project_path`
+- `stem_id`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

@@ -1,0 +1,16 @@
+get_project_summary
+
+Purpose
+- Return a compact summary of the project without dumping the full project payload.
+
+Inputs
+- `project_path`
+
+Returns
+- `decision`
+- `validation`
+- `render_state`
+- `payload` with timeline duration, fps, tracks, source media path, and entity counts
+
+Notes
+- Use this when you need a quick project overview before deciding which edit tool to call.

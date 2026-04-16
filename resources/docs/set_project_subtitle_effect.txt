@@ -1,0 +1,75 @@
+set_project_subtitle_effect
+
+Purpose
+- Attach a visual or animation effect to a subtitle cue.
+- The effect is stored in the subtitle cue's `effects` list and applied automatically at render time.
+- Calling this tool again with the same `kind` and `replace=true` (default) replaces the previous value.
+
+Inputs
+- `project_path`
+- `subtitle_id`  – id of the subtitle cue to modify
+- `kind`         – effect type (see Supported effects below)
+- `parameters`   – optional dict of effect-specific parameters (see per-effect docs below)
+- `span_id`      – optional span id within the cue to apply the effect to a specific portion of text
+- `replace`      – optional bool (default true); when true, any existing effect with the same kind is replaced
+- `output_path`  – optional
+
+Supported effects
+-----------------
+Visual effects (applied to the subtitle still image at render time):
+
+  outline
+    color   – stroke color, default "black"
+    width   – stroke width in pixels, default 2
+
+  glow
+    color   – glow color, default "white"
+    radius  – gaussian blur radius in pixels, default 4
+
+  background_box
+    color   – fill color, default "black"
+    opacity – 0-255 alpha, default 160
+    padding – extra pixels around text rect, default 8
+
+  gradient
+    color_top    – top gradient color (e.g. "#ff0000")
+    color_bottom – bottom gradient color (e.g. "#0000ff")
+    direction    – "vertical" (default) or "horizontal"
+
+Animation effects (applied to the clip timeline during render):
+
+  fade_in
+    duration – ramp-in duration in seconds, default 0.3
+
+  fade_out
+    duration – ramp-out duration in seconds, default 0.3
+
+  slide_in
+    direction – "bottom" (default) | "top" | "left" | "right"
+    duration  – animation duration in seconds, default 0.3
+    distance  – slide distance in pixels, default 40
+
+  slide_out
+    direction – "bottom" (default) | "top" | "left" | "right"
+    duration  – animation duration in seconds, default 0.3
+    distance  – slide distance in pixels, default 40
+
+  typewriter
+    chars_per_second – reveal speed, default 20
+    Note: this effect generates one ImageClip per character step.
+          It cannot be combined with slide_in / slide_out on the same cue.
+
+  scale_in
+    duration – zoom-in duration in seconds, default 0.3
+
+Returns
+- `decision`
+- `changes`
+- `validation`
+- `render_state`
+
+Notes
+- Multiple effects of different kinds can coexist on one cue.
+- Visual effects (outline, glow, background_box) can be stacked freely.
+- Animation effects (fade_in, fade_out, slide_in, slide_out, scale_in) are composited during moviepy render.
+- Per-cue `font_size` and `font_path` fields override the global render defaults.

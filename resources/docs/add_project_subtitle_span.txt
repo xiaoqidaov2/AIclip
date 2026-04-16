@@ -1,0 +1,24 @@
+add_project_subtitle_span
+
+Purpose
+- Add one styled span into a subtitle cue.
+
+Inputs
+- `project_path`
+- `subtitle_id`
+- `span_id`: optional
+- `text`
+- `color`: optional
+- `bold`: optional
+- `italic`: optional
+- `underline`: optional
+- `index`: optional insert position
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `render_state`
+
+Notes
+- Use this for a few highlighted words inside one subtitle line.
