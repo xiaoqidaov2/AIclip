@@ -1,3 +1,4 @@
+from .capcut_tool import CapCutVideoTool
 from .tool_registration import ToolRegistration
 from .tool_setup import ToolSetup
 from .asr_tool import ASRTool
@@ -11,6 +12,7 @@ __all__ = [
     "ASRTool",
     "SubtitleTool",
     "MoviePyTool",
+    "CapCutVideoTool",
     "read_file",
     "edit_file",
     "write_file",

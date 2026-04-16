@@ -223,7 +223,7 @@ class MoviePyTool:
 
             final_clip = CompositeVideoClip([source, subtitle_clip], size=source.size)
             output_path = output_path or self._default_output_path(video_path, "subbed")
-            final_clip.write_videofile(output_path, logger=None)
+            final_clip.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_path": video_path,
@@ -282,7 +282,7 @@ class MoviePyTool:
 
             output_path = output_path or self._default_output_path(video_path, "trimmed")
             trimmed = source.subclipped(start, end)
-            trimmed.write_videofile(output_path, logger=None)
+            trimmed.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_path": video_path,
@@ -313,7 +313,7 @@ class MoviePyTool:
 
             output_path = output_path or self._default_output_path(video_path, "cutout")
             cut = source.with_section_cut_out(start, end)
-            cut.write_videofile(output_path, logger=None)
+            cut.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_path": video_path,
@@ -340,7 +340,7 @@ class MoviePyTool:
         try:
             output_path = output_path or self._default_output_path(video_paths[0], "concat")
             final_clip = concatenate_videoclips(clips, method=method)
-            final_clip.write_videofile(output_path, logger=None)
+            final_clip.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_paths": video_paths,
@@ -384,7 +384,7 @@ class MoviePyTool:
                 )
                 resized = source.resized(new_size)
 
-            resized.write_videofile(output_path, logger=None)
+            resized.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_path": video_path,
@@ -423,7 +423,7 @@ class MoviePyTool:
         try:
             output_path = output_path or self._default_output_path(video_path, "cropped")
             cropped = source.cropped(x1=x1, y1=y1, x2=x2, y2=y2, width=width, height=height)
-            cropped.write_videofile(output_path, logger=None)
+            cropped.write_videofile(output_path, logger="bar")
             return {
                 "output_path": output_path,
                 "source_path": video_path,

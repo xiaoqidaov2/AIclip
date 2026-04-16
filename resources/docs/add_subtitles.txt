@@ -47,3 +47,6 @@ position 预设决定字幕区域的基准坐标，margin_x/margin_y 控制与�
 - 工具内部会将字幕文件复制到临时文件再处理，处理完成后自动清理临时文件。
 - 烧录过程会重新编码视频，耗时与视频时长和分辨率成正比。
 - 字幕文本超出 subtitle_box_width_ratio 定义的宽度时会自动换行。
+- 返回的 output_path 可直接传给 capcut_video_creation 工具的 video_files 参数（作为列表项）使用。
+
+

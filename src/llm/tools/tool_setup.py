@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .capcut_tool import CapCutVideoTool
 from .file_tools import bash_command, edit_file, grep_file, list_directory, read_file, write_file
 from .moviepy_tool import MoviePyTool
 from .subtitle_tool import SubtitleTool
@@ -28,6 +29,7 @@ class ToolSetup:
         self._resources: Dict[str, Any] = {
             "whisper": SubtitleTool(),
             "moviepy": MoviePyTool(),
+            "capcut": CapCutVideoTool(),
             "file_tools": {
                 "read_file": read_file,
                 "edit_file": edit_file,
@@ -175,6 +177,14 @@ class ToolSetup:
                 source="file_tools",
                 attr="bash_command",
                 doc_file="bash_command.txt",
+            ),
+            ToolSpec(
+                name="capcut_video_creation",
+                title="CapCut Video Creation Tool",
+                description="Create videos with ASR file, auto-add effects and stickers. IMPORTANT: This tool MUST be used as the FINAL step in the workflow because it requires pre-generated video assets.",
+                source="capcut",
+                attr="create_video_from_asr",
+                doc_file="capcut_video_creation.txt",
             ),
         ]
         self._setup()

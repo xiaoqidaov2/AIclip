@@ -39,4 +39,5 @@ SRT 文件由若干字幕块组成，每块包含：序号、时间轴（HH:MM:S
 - 模型首次运行时需要下载权重文件，后续调用使用本地缓存。
 - 识别质量受录音清晰度、噪声、口音等因素影响。
 - output_path 的父目录若不存在会自动创建。
-- 返回的 output_path 可直接传给 add_subtitles 工具的 subtitle_path 参数使用。
+- 返回的 output_path 可传给 add_subtitles 工具的 subtitle_path 参数使用，或传给 capcut_video_creation 工具的 asr_file_path 参数使用。
+
