@@ -1,0 +1,16 @@
+remove_project_subtitle_effect
+
+Purpose
+- Remove one or all effects from a subtitle cue.
+
+Inputs
+- `project_path`
+- `subtitle_id` – id of the subtitle cue
+- `kind`        – optional; if provided only effects with this kind are removed; omit to clear all effects
+- `span_id`     – optional; if provided, effects are removed from the specific span instead of the cue
+- `output_path` – optional
+
+Returns
+- `decision`
+- `changes`
+- `render_state`

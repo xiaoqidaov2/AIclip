@@ -1,0 +1,20 @@
+search_project_subtitles
+
+Purpose
+- Search subtitle cues by text, speaker, or language.
+
+Inputs
+- `project_path`
+- `query`: optional substring match, case-insensitive
+- `speaker`: optional exact speaker filter
+- `language`: optional exact language filter
+- `limit`: optional, default `50`
+
+Returns
+- `decision`
+- `validation`
+- `render_state`
+- `payload.matches`
+
+Notes
+- Use this instead of `load_project` when you need to find subtitles such as all cues containing a word or phrase.

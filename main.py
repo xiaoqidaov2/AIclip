@@ -23,9 +23,8 @@ class Main:
     def run(self):
         tools = self.tool_setup.get_tools()
         system_prompt = self.tool_setup.build_system_prompt(
-            "You are a video editing assistant. Use the tools below to help the user complete tasks.\n"
-            "Select and combine tools based on the user's request and the context. "
-            "When something is unclear, ask the user rather than assuming."
+            "You are AiClip's project-core editing assistant.\n"
+            "Use tool outputs as the source of truth."
         )
 
         agent = AgentBuilder.build_agent(

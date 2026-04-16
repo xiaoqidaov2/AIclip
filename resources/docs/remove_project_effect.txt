@@ -1,0 +1,15 @@
+remove_project_effect
+
+Remove a visual effect from a project file.
+
+When to use:
+- Delete an effect from the project.
+
+Inputs:
+- `project_path`
+- `effect_id`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

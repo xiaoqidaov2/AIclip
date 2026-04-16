@@ -1,0 +1,27 @@
+update_project_subtitle
+
+Purpose
+- Update an existing subtitle cue.
+
+Inputs
+- `project_path`
+- `subtitle_id`
+- `start`: optional
+- `end`: optional
+- `text`: optional
+- `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`
+- `speaker`: optional
+- `language`: optional
+- `position`: optional `top`, `middle`, `bottom`, or `below_faces` (to automatically avoid covering detected faces)
+- `margin_top`: optional top edge margin in pixels
+- `margin_bottom`: optional bottom edge margin in pixels
+- `margin_left`: optional left edge margin in pixels
+- `margin_right`: optional right edge margin in pixels
+- `offset_y`: optional vertical pixel adjustment
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `validation`
+- `render_state`

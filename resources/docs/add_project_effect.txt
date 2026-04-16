@@ -1,0 +1,18 @@
+add_project_effect
+
+Add a visual effect to a project file.
+
+When to use:
+- Attach a visual effect to a clip or track.
+
+Inputs:
+- `project_path`
+- `effect_id`
+- `target_id`
+- `kind`
+- `parameters`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

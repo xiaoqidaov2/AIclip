@@ -19,22 +19,17 @@ def main():
         model=llm_config.create_llm(),
         tools=tool_setup.get_tools(
             [
-                "transcribe_audio",
-                "generate_subtitle_srt",
-                "read_file",
-                "edit_file",
-                "grep_file",
-                "bash_command",
+                "load_project",
+                "save_project",
+                "set_project_metadata",
+                "prepare_project_render",
             ]
         ),
-        system_prompt="You are a multi-purpose command assistant.",
+        system_prompt="You are a core project editing assistant.",
     )
 
     messages = [
-        {
-            "role": "user",
-            "content": "Help me turn C:\\Users\\admin\\Documents\\item\\AiClip\\edited_intermediate.mp4 into subtitles",
-        }
+        {"role": "user", "content": "Load the project and prepare it for render."}
     ]
 
     print("=" * 60)

@@ -1,0 +1,15 @@
+remove_project_subtitle_span
+
+Purpose
+- Remove one subtitle span from a cue.
+
+Inputs
+- `project_path`
+- `subtitle_id`
+- `span_id`
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `render_state`

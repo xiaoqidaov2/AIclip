@@ -1,0 +1,25 @@
+create_project_from_media
+
+Purpose
+- Bootstrap a project from a raw video or audio file.
+
+Inputs
+- `media_path`: source media file.
+- `project_path`: optional output project path.
+- `project_name`: optional name.
+- `project_id`: optional id.
+- `asset_id`: optional asset id.
+- `track_id`: optional initial track id.
+- `clip_id`: optional initial clip id.
+
+Returns
+- `decision`
+- `payload`
+- `render_state`
+- `state` with `project_path`, `media_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`
+
+Notes
+- This tool creates the project shell only.
+- It does not generate subtitles or a transcript.
+- If the request depends on subtitles and none exist yet, keep the result at project scope and report that gap with `decision`.
+- If the source video has audio, the project should include both video and audio timeline tracks.

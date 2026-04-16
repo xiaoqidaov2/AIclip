@@ -1,0 +1,15 @@
+remove_project_comment
+
+Remove a collaboration comment from a project file.
+
+When to use:
+- Delete a review note from the project.
+
+Inputs:
+- `project_path`
+- `comment_id`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

@@ -1,0 +1,42 @@
+detect_faces
+
+Purpose
+- Detect human faces in a project's source video, save their positions in the project metadata, and return their pixel and normalized bounding-box positions for each sampled frame. The saved metadata can be used by subtitle rendering to automatically dodge faces (e.g. `position="below_faces"` in update_project_subtitle).
+
+Inputs
+- `project_path`: path to the project JSON file
+- `media_path`: optional override video path (defaults to project source media)
+- `timestamps`: optional list of specific timestamps (seconds) to sample; if omitted, frames are sampled every `sample_interval` seconds
+- `sample_interval`: seconds between auto-sampled frames, default `1.0`
+- `max_frames`: maximum number of frames to sample when auto-sampling, default `30`
+- `scale_factor`: Haar cascade scaleFactor, default `1.1`
+- `min_neighbors`: Haar cascade minNeighbors, default `5`
+- `min_face_size`: minimum face size in pixels, default `30`
+
+Returns
+- `ok`: true on success
+- `state` with:
+  - `video_width`, `video_height`
+  - `duration`, `fps`
+  - `frames_sampled`
+  - `frames_with_faces`
+  - `total_faces_detected`
+- `payload` with:
+  - `video_width`, `video_height`, `duration`, `fps`
+  - `total_faces_detected`
+  - `frames_with_faces`
+  - `frames`: list of frame objects, each containing:
+    - `timestamp`: float seconds
+    - `frame_index`: int
+    - `face_count`: int
+    - `faces`: list of face objects:
+      - `x`, `y`, `w`, `h`: pixel bounding box (top-left origin)
+      - `cx`, `cy`: center pixel coordinates
+      - `norm_x`, `norm_y`, `norm_w`, `norm_h`: normalized coordinates (0.0–1.0)
+
+Notes
+- Requires `opencv-python` installed (`pip install opencv-python`).
+- Uses OpenCV Haar cascade (`haarcascade_frontalface_default.xml`) bundled with OpenCV — no external model download needed.
+- Use `timestamps` for targeted sampling (e.g. at subtitle cue midpoints).
+- Use normalized coordinates (`norm_x`, `norm_y`, `norm_w`, `norm_h`) when computing subtitle placement relative to faces.
+- Returns `faces.detected` code even when zero faces are found.

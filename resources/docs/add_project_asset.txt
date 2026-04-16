@@ -1,0 +1,18 @@
+add_project_asset
+
+Add a media asset into a project file.
+
+When to use:
+- Register a new source file in the project.
+
+Inputs:
+- `project_path`
+- `asset_id`
+- `asset_path`
+- `media_type`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- asset count in `state`
+- `render_state`

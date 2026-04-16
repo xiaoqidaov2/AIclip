@@ -1,0 +1,18 @@
+set_project_export_preset
+
+Create or update an export preset in a project file.
+
+When to use:
+- Define delivery settings such as format, bitrate, codec, or container.
+
+Inputs:
+- `project_path`
+- `preset_id`
+- `name`
+- `format`
+- `settings`
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

@@ -1,0 +1,18 @@
+set_project_clip_speed
+
+Update clip speed inside a project file.
+
+When to use:
+- Change playback speed without changing the source file.
+
+Inputs:
+- `project_path`
+- `clip_id`
+- `speed`
+- `track_id`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`
+- `project_version`

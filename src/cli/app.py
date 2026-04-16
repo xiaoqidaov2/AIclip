@@ -85,7 +85,7 @@ class CLIApp:
 
         if hasattr(self.agent, "stream"):
             try:
-                final_message, streamed_messages = self.renderer.render_stream(self.agent.stream({"messages": messages}))
+                final_message, streamed_messages = self.renderer.render_stream(lambda: self.agent.stream({"messages": messages}))
                 self._sync_session_state(streamed_messages)
                 if streamed_messages:
                     self.history.extend(streamed_messages)

@@ -1,0 +1,56 @@
+search_net_asset
+
+Search online stock libraries for free-to-use media assets.
+
+When to use:
+- User needs background video, B-roll, stock photos, or audio clips.
+- AI decides to source supplementary media from the web.
+
+Providers:
+- pexels   — video + image (Pexels License, free commercial use)
+- pixabay  — video + image (Pixabay License, free commercial use)
+- freesound — audio SFX + music loops (Creative Commons)
+- auto     — picks the best available provider for the requested media type
+
+Inputs:
+- `query`      — natural-language search (e.g. "sunset beach", "city crowd noise")
+- `media_type` — "video" | "image" | "audio"  (default: "video")
+- `provider`   — "pexels" | "pixabay" | "freesound" | "auto"  (default: "auto")
+- `per_page`   — number of results 1–80  (default: 8)
+- `orientation` — optional filter: "landscape" | "portrait" | "square"
+
+Returns (on success):
+- `ok`: true
+- `provider_used`: which provider actually served results
+- `total_returned`: count of results in this page
+- `results[]`: list of asset objects, each with:
+    - `id`           — provider-specific ID
+    - `title`        — human-readable name / alt-text
+    - `media_type`   — "video" | "image" | "audio"
+    - `provider`     — source provider name
+    - `preview_url`  — thumbnail / low-res URL (for display only)
+    - `download_url` — direct file URL; pass to download_net_asset
+    - `page_url`     — original page link (required for attribution)
+    - `author`       — creator's name
+    - `attribution`  — full attribution string (must be stored)
+    - `license`      — license name
+    - `duration`     — seconds (video/audio) or null
+    - `width`/`height` — pixels (video/image) or null
+    - `tags`         — list of keywords
+
+Returns (on error):
+- `ok`: false
+- `error`: human-readable reason (e.g. missing API key)
+- `results`: []
+
+Workflow:
+1. Call search_net_asset to get a list of candidates.
+2. Present options to the user or pick the best match automatically.
+3. Call download_net_asset with the chosen result's `download_url`.
+4. Call add_project_asset with the returned `local_path` to register it.
+5. Store `attribution` in the asset metadata for compliance.
+
+Attribution requirement:
+Pexels and Pixabay require that the author and source are credited whenever
+their content is displayed.  Always copy the `attribution` field into the
+asset's metadata when calling add_project_asset.

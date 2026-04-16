@@ -1,0 +1,16 @@
+save_project
+
+Purpose
+- Persist the current project to JSON or XML.
+
+Inputs
+- `project_path`: source project file.
+- `output_path`: optional target path.
+- `format`: optional `json` or `xml`.
+
+Returns
+- `decision`
+- `payload`
+- `validation`
+- `render_state`
+- `artifacts` with the saved project path

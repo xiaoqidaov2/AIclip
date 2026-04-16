@@ -1,0 +1,21 @@
+trim_project_clip
+
+Purpose
+- Trim a clip inside the project timeline.
+
+Inputs
+- `project_path`
+- `clip_id`
+- `start`
+- `end`
+- `track_id`: optional
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `validation`
+- `render_state`
+
+Notes
+- Check `validation` before moving to render.

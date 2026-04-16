@@ -1,0 +1,23 @@
+render_project
+
+Purpose
+- Render the project timeline into a final video file.
+
+Inputs
+- `project_path`
+- `output_path`
+- `track_id`: optional
+- `font_path`: optional
+- `font_size`: optional
+- `subtitle_color`: optional
+
+Returns
+- `decision`
+- `payload`
+- `render_state`
+- `artifacts` with the rendered video path
+
+Notes
+- This tool burns subtitle cues into the video output.
+- Run only after the project validates and the timeline is ready.
+- If `font_path` is omitted, the renderer searches `resources/fonts` for a Chinese font first.

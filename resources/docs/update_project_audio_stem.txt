@@ -1,0 +1,18 @@
+update_project_audio_stem
+
+Update an audio stem in a project file.
+
+When to use:
+- Correct the role, source path, or track binding of a stem.
+
+Inputs:
+- `project_path`
+- `stem_id`
+- `role`: optional
+- `path`: optional
+- `track_id`: optional
+- `output_path`: optional
+
+Returns:
+- updated project snapshot
+- `changes`

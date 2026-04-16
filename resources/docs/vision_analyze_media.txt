@@ -1,0 +1,27 @@
+vision_analyze_media
+
+Purpose
+- Analyze image or video content with an OpenAI-compatible vision model.
+
+Inputs
+- `media_path`: public URL or local file path
+- `prompt`: analysis instruction; default asks for key events and timestamps
+- `media_type`: optional `image` or `video`; inferred from path when omitted
+- `model`: optional override model name
+- `api_base`: optional override API base URL
+- `api_key`: optional override API key
+- `fps`: optional video frame sampling rate
+- `temperature`: optional decoding temperature
+- `max_tokens`: optional response token limit
+
+Returns
+- `decision`
+- `payload.analysis`: model analysis text
+- `state.model`, `state.media_type`, `state.usage`
+
+Notes
+- Default endpoint and model can be configured via env:
+  - `AICLIP_VISION_API_BASE`
+  - `AICLIP_VISION_API_KEY`
+  - `AICLIP_VISION_MODEL`
+- Falls back to `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
