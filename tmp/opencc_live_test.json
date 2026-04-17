@@ -1,0 +1,86 @@
+[
+  {
+    "id": "sub_0001",
+    "original": "九座族注意,是不是一座就是幾校時",
+    "normalized": "九座族注意,是不是一座就是几校时",
+    "changed": true
+  },
+  {
+    "id": "sub_0002",
+    "original": "站起來腰像罐了簽,這可不是小問題",
+    "normalized": "站起来腰像罐了签,这可不是小问题",
+    "changed": true
+  },
+  {
+    "id": "sub_0003",
+    "original": "長期九座會讓腰部肌肉持續緊張",
+    "normalized": "长期九座会让腰部肌肉持续紧张",
+    "changed": true
+  },
+  {
+    "id": "sub_0004",
+    "original": "腰追壓力跟著飆升,慢慢就疼起來了",
+    "normalized": "腰追压力跟著飙升,慢慢就疼起来了",
+    "changed": true
+  },
+  {
+    "id": "sub_0005",
+    "original": "教你三個簡單方法",
+    "normalized": "教你三个简单方法",
+    "changed": true
+  },
+  {
+    "id": "sub_0006",
+    "original": "1.每座40分鐘起身活動",
+    "normalized": "1.每座40分钟起身活动",
+    "changed": true
+  },
+  {
+    "id": "sub_0007",
+    "original": "做個擴胸後身,放鬆腰背部肌肉",
+    "normalized": "做个扩胸后身,放松腰背部肌肉",
+    "changed": true
+  },
+  {
+    "id": "sub_0008",
+    "original": "2.試試靠牆站立,後腦勺,肩甲骨貼牆",
+    "normalized": "2.试试靠墙站立,后脑勺,肩甲骨贴墙",
+    "changed": true
+  },
+  {
+    "id": "sub_0009",
+    "original": "酸腿微趨,每天5分鐘,能幫腰追回症",
+    "normalized": "酸腿微趋,每天5分钟,能帮腰追回症",
+    "changed": true
+  },
+  {
+    "id": "sub_0010",
+    "original": "3.疼的時候用熱水帶熱乎15分鐘",
+    "normalized": "3.疼的时候用热水带热乎15分钟",
+    "changed": true
+  },
+  {
+    "id": "sub_0011",
+    "original": "促進血液循環,記住別蒙扭腰,或碎太軟的船",
+    "normalized": "促进血液循环,记住别蒙扭腰,或碎太软的船",
+    "changed": true
+  },
+  {
+    "id": "sub_0012",
+    "original": "快試試這些小技巧,覺得有用記得點贊關注",
+    "normalized": "快试试这些小技巧,觉得有用记得点赞关注",
+    "changed": true
+  },
+  {
+    "id": "sub_0013",
+    "original": "有其他腹腰廟招也來評論區分享",
+    "normalized": "有其他腹腰庙招也来评论区分享",
+    "changed": true
+  },
+  {
+    "id": "sub_0014",
+    "original": "緊供參考,如有故事請就醫",
+    "normalized": "紧供参考,如有故事请就医",
+    "changed": true
+  }
+]

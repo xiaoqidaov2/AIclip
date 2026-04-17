@@ -163,6 +163,14 @@ class ToolSetup:
                 doc_file="update_project_subtitle.txt",
             ),
             ToolSpec(
+                name="batch_update_project_subtitles",
+                title="Project Subtitle Batch Styling Tool",
+                description="Update many subtitle cues in one call, including positions, spans, and multiple subtitle effects per cue.",
+                source="project",
+                attr="batch_update_project_subtitles",
+                doc_file="batch_update_project_subtitles.txt",
+            ),
+            ToolSpec(
                 name="add_project_subtitle_span",
                 title="Project Subtitle Span Add Tool",
                 description="Add a styled span into one subtitle cue.",
@@ -436,6 +444,7 @@ class ToolSetup:
             + "For list/dict tool args (such as `spans`, `parameters`), pass native JSON values, not quoted JSON strings.\n"
             + "If `subtitle_source_present` is false and the request depends on subtitles, call `transcribe_audio`.\n"
             + "If the request is to cut silence, use `remove_project_silence` after subtitles exist.\n"
+            + "If you need to style, reposition, or add effects to 3 or more subtitles, prefer `batch_update_project_subtitles` instead of many small subtitle tool calls.\n"
             + "If the request targets only a few words in one subtitle, use subtitle span tools instead of replacing the whole cue.\n"
             + "Do not ask the user to guess subtitle content."
         )

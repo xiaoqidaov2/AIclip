@@ -101,6 +101,20 @@ def validate_project(project: Project) -> ValidationReport:
                 )
             )
 
+    for subtitle_index, cue in enumerate(project.subtitles):
+        if cue.spans:
+            combined_text = "".join(span.text for span in cue.spans)
+            if cue.text != combined_text:
+                report.add_issue(
+                    ValidationIssue(
+                        "error",
+                        "subtitle.spans.text_mismatch",
+                        "Subtitle cue text must match the concatenated span text",
+                        path=f"subtitles[{subtitle_index}]",
+                        details={"cue_id": cue.id, "text": cue.text, "combined_span_text": combined_text},
+                    )
+                )
+
     return report
 
 

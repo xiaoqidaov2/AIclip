@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import tempfile
 import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -48,6 +50,8 @@ class ProjectTool:
 
     def __init__(self) -> None:
         self.store = ProjectStore()
+        self._opencc_converter = None
+        self._opencc_checked = False
 
     def _project_counts(self, project: Project) -> Dict[str, Any]:
         return {
@@ -184,12 +188,17 @@ class ProjectTool:
     def _subtitle_intervals(self, subtitles: list[SubtitleCue]) -> list[tuple[float, float]]:
         return self._merge_intervals([(cue.start, cue.end) for cue in subtitles])
 
-    def _normalize_subtitle_spans(self, cue_id: str, spans: list[dict[str, Any] | SubtitleSpan]) -> list[SubtitleSpan]:
+    def _normalize_subtitle_spans(
+        self,
+        cue_id: str,
+        spans: list[dict[str, Any] | SubtitleSpan],
+    ) -> list[SubtitleSpan]:
         normalized: list[SubtitleSpan] = []
         for index, item in enumerate(spans, start=1):
             span = item if isinstance(item, SubtitleSpan) else SubtitleSpan.from_dict(item)
             if not span.id:
                 span.id = f"{cue_id}_span_{index:03d}"
+            span.text = self._normalize_transcribed_text(span.text)
             normalized.append(span)
         return normalized
 
@@ -220,6 +229,37 @@ class ProjectTool:
                 raise ValueError(f"{field_name} must be an object")
             return parsed
         raise ValueError(f"{field_name} must be a dict or JSON object string")
+
+    def _coerce_subtitle_style_entries(self, value: Any) -> list[Dict[str, Any]]:
+        entries = self._coerce_json_array(value, "entries")
+        normalized: list[Dict[str, Any]] = []
+        for index, item in enumerate(entries, start=1):
+            if not isinstance(item, dict):
+                raise ValueError(f"entries[{index}] must be an object")
+            subtitle_id = item.get("subtitle_id")
+            if not isinstance(subtitle_id, str) or not subtitle_id.strip():
+                raise ValueError(f"entries[{index}].subtitle_id is required")
+
+            normalized_entry = dict(item)
+            spans = normalized_entry.get("spans")
+            if spans is not None and not isinstance(spans, list):
+                raise ValueError(f"entries[{index}].spans must be a list")
+
+            effects = normalized_entry.get("effects")
+            if effects is not None:
+                if not isinstance(effects, list):
+                    raise ValueError(f"entries[{index}].effects must be a list")
+                for effect_index, effect in enumerate(effects, start=1):
+                    if not isinstance(effect, dict):
+                        raise ValueError(f"entries[{index}].effects[{effect_index}] must be an object")
+                    kind = effect.get("kind")
+                    if not isinstance(kind, str) or not kind.strip():
+                        raise ValueError(f"entries[{index}].effects[{effect_index}].kind is required")
+                    parameters = effect.get("parameters")
+                    if parameters is not None and not isinstance(parameters, dict):
+                        raise ValueError(f"entries[{index}].effects[{effect_index}].parameters must be an object")
+            normalized.append(normalized_entry)
+        return normalized
 
     def _clip_call(self, clip: Any, method_name: str, *args: Any, **kwargs: Any) -> Any:
         method = getattr(clip, method_name, None)
@@ -278,6 +318,28 @@ class ProjectTool:
         fps = float(project.timeline.fps or project.metadata.get("source_media_fps") or 30.0)
         return width, height, fps
 
+    def _project_source_duration(self, project: Project, project_path: Optional[str] = None) -> Optional[float]:
+        metadata_duration = project.metadata.get("source_media_duration")
+        if isinstance(metadata_duration, (int, float)) and float(metadata_duration) > 0:
+            return float(metadata_duration)
+
+        asset_durations = [float(asset.duration) for asset in project.assets if isinstance(asset.duration, (int, float)) and float(asset.duration) > 0]
+        if asset_durations:
+            return max(asset_durations)
+
+        if project_path:
+            source_path = self._resolve_media_path(project, project_path=project_path)
+            if source_path is not None:
+                try:
+                    media_info = self._probe_media(source_path)
+                except Exception:
+                    media_info = None
+                if media_info:
+                    duration = media_info.get("duration")
+                    if isinstance(duration, (int, float)) and float(duration) > 0:
+                        return float(duration)
+        return None
+
     def _transform_video_clip(self, media_clip: Any, clip: Clip) -> Any:
         transform = dict(clip.transform or {})
         scale = transform.get("scale")
@@ -310,7 +372,11 @@ class ProjectTool:
             source = VideoFileClip(str(asset_path))
             opened.append(source)
             source_in = float(clip.source_in or 0.0)
-            source_out = float(clip.source_out if clip.source_out is not None else getattr(source, "duration", clip.end - clip.start))
+            source_duration = float(getattr(source, "duration", clip.end - clip.start) or (clip.end - clip.start))
+            requested_source_out = float(clip.source_out if clip.source_out is not None else source_duration)
+            source_out = min(requested_source_out, source_duration)
+            if source_out <= source_in:
+                source_out = min(source_duration, source_in + max(0.01, float(clip.end - clip.start)))
             media_clip = self._subclip(source, source_in, source_out)
             opened.append(media_clip)
             if getattr(clip, "speed", 1.0) not in (None, 1.0):
@@ -385,6 +451,8 @@ class ProjectTool:
                 "color": color,
                 "outline": fx_map.get("outline"),
                 "glow": fx_map.get("glow"),
+                "bold": False,
+                "underline": False,
             }
             char_styles: List[Dict[str, Any]] = [dict(default_style) for _ in full_text]
             covered_cursor = 0
@@ -400,15 +468,19 @@ class ProjectTool:
                     "color": span_color,
                     "outline": span_fx_map.get("outline", fx_map.get("outline")),
                     "glow": span_fx_map.get("glow", fx_map.get("glow")),
+                    "bold": bool(getattr(span, "bold", False)),
+                    "underline": bool(getattr(span, "underline", False)),
                 }
 
-                start_idx = full_text.find(sanitized_span_text, covered_cursor)
-                if start_idx < 0:
-                    start_idx = full_text.find(sanitized_span_text)
+                start_idx, end_idx = self._find_span_range(
+                    full_text,
+                    sanitized_span_text,
+                    covered_cursor=covered_cursor,
+                    single_span=len(spans) == 1,
+                )
                 if start_idx < 0:
                     continue
 
-                end_idx = min(len(full_text), start_idx + len(sanitized_span_text))
                 for char_index in range(start_idx, end_idx):
                     char_styles[char_index] = dict(style)
                 covered_cursor = end_idx
@@ -438,7 +510,13 @@ class ProjectTool:
                 i = 0
                 while i < len(line):
                     fpos = full_idx + i
-                    seg_style = char_styles[fpos] if fpos < len(char_styles) else {"color": color, "outline": fx_map.get("outline"), "glow": fx_map.get("glow")}
+                    seg_style = char_styles[fpos] if fpos < len(char_styles) else {
+                        "color": color,
+                        "outline": fx_map.get("outline"),
+                        "glow": fx_map.get("glow"),
+                        "bold": False,
+                        "underline": False,
+                    }
                     j = i + 1
                     while j < len(line):
                         fpos_j = full_idx + j
@@ -458,7 +536,12 @@ class ProjectTool:
 
                     for dx, dy in o_offsets:
                         text_draw.text((cx + dx, cy + dy), seg_text, font=font, fill=shadow)
-                    text_draw.text((cx, cy), seg_text, font=font, fill=seg_style["color"])
+
+                    fill_offsets = [(0, 0)]
+                    if seg_style.get("bold"):
+                        fill_offsets.extend([(1, 0), (0, 1)])
+                    for dx, dy in fill_offsets:
+                        text_draw.text((cx + dx, cy + dy), seg_text, font=font, fill=seg_style["color"])
 
                     glow_p = seg_style["glow"]
                     if glow_p:
@@ -466,6 +549,15 @@ class ProjectTool:
                         gc = glow_p.get("color", "white")
                         gr, gg, gb, ga = self._parse_color(gc, 255)
                         _get_glow_draw(r).text((cx, cy), seg_text, font=font, fill=(gr, gg, gb, ga))
+
+                    if seg_style.get("underline"):
+                        seg_width = int(draw.textlength(seg_text, font=font))
+                        underline_y = cy + (font.size if hasattr(font, "size") else font_size) + 1
+                        text_draw.line(
+                            [(cx, underline_y), (cx + max(1, seg_width), underline_y)],
+                            fill=seg_style["color"],
+                            width=2 if seg_style.get("bold") else 1,
+                        )
 
                     # Advance cx using textlength instead of textbbox to preserve kerning/spacing
                     cx += int(draw.textlength(seg_text, font=font))
@@ -586,6 +678,75 @@ class ProjectTool:
             result.append(ch)
         return "".join(result)
 
+    def _get_opencc_converter(self):
+        if self._opencc_checked:
+            return self._opencc_converter
+
+        self._opencc_checked = True
+        try:
+            from opencc import OpenCC  # type: ignore
+        except Exception:
+            self._opencc_converter = None
+            return None
+
+        try:
+            self._opencc_converter = OpenCC("t2s")
+        except Exception:
+            self._opencc_converter = None
+        return self._opencc_converter
+
+    def _normalize_transcribed_text(self, text: str) -> str:
+        normalized = (text or "").strip()
+        if not normalized:
+            return ""
+
+        converter = self._get_opencc_converter()
+        if converter is None:
+            return normalized
+
+        try:
+            converted = converter.convert(normalized)
+        except Exception:
+            return normalized
+        return converted.strip() or normalized
+
+    def _find_span_range(
+        self,
+        full_text: str,
+        span_text: str,
+        covered_cursor: int = 0,
+        single_span: bool = False,
+    ) -> tuple[int, int]:
+        """Locate a span inside the cue text with tolerant normalization fallback."""
+        if not full_text or not span_text:
+            return (-1, -1)
+
+        def _search(haystack: str, needle: str, start: int) -> int:
+            anchor = max(0, min(start, len(haystack)))
+            found = haystack.find(needle, anchor)
+            if found < 0 and anchor > 0:
+                found = haystack.find(needle)
+            return found
+
+        start_idx = _search(full_text, span_text, covered_cursor)
+        if start_idx >= 0:
+            return (start_idx, min(len(full_text), start_idx + len(span_text)))
+
+        normalized_full = self._normalize_transcribed_text(full_text)
+        normalized_span = self._normalize_transcribed_text(span_text)
+        if normalized_full and normalized_span:
+            normalized_idx = _search(normalized_full, normalized_span, covered_cursor)
+            if normalized_idx >= 0:
+                return (
+                    normalized_idx,
+                    min(len(full_text), normalized_idx + len(span_text)),
+                )
+
+        if single_span:
+            return (0, len(full_text))
+
+        return (-1, -1)
+
     def _wrap_by_pixel_width(self, text: str, font: Any, max_width: int, draw: Any) -> list[str]:
         """Greedy per-character pixel-width wrap.
         Works correctly for CJK (each char ~full-width) and mixed Latin/CJK text."""
@@ -610,8 +771,23 @@ class ProjectTool:
     def _load_font(self, font_path: Optional[str], font_size: int):
         fonts_dir = Path(__file__).resolve().parents[3] / "resources" / "fonts"
         candidates = []
+        configured_font = os.getenv("AICLIP_SUBTITLE_FONT")
+        windows_font_candidates = [
+            Path(r"C:\Windows\Fonts\msyh.ttc"),
+            Path(r"C:\Windows\Fonts\msyhbd.ttc"),
+            Path(r"C:\Windows\Fonts\msjh.ttc"),
+            Path(r"C:\Windows\Fonts\simhei.ttf"),
+            Path(r"C:\Windows\Fonts\simsun.ttc"),
+        ]
+
+        def _append_candidate(path_value: Path) -> None:
+            if path_value not in candidates:
+                candidates.append(path_value)
+
         if font_path:
-            candidates.append(Path(font_path))
+            _append_candidate(Path(font_path))
+        if configured_font:
+            _append_candidate(Path(configured_font))
         if fonts_dir.exists():
             preferred = [
                 fonts_dir / "WenYue-XinQingNianTi-W8-J-2.otf",
@@ -619,12 +795,15 @@ class ProjectTool:
                 fonts_dir / "simsun.ttc",
                 fonts_dir / "NotoSansCJK-Regular.ttc",
             ]
-            candidates.extend(candidate for candidate in preferred if candidate.exists())
-            candidates.extend(
-                candidate
-                for candidate in sorted(fonts_dir.iterdir())
-                if candidate.suffix.lower() in {".ttf", ".otf", ".ttc"}
-            )
+            for candidate in preferred:
+                if candidate.exists():
+                    _append_candidate(candidate)
+            for candidate in sorted(fonts_dir.iterdir()):
+                if candidate.suffix.lower() in {".ttf", ".otf", ".ttc"}:
+                    _append_candidate(candidate)
+        for candidate in windows_font_candidates:
+            if candidate.exists():
+                _append_candidate(candidate)
 
         for candidate in candidates:
             try:
@@ -1441,7 +1620,7 @@ class ProjectTool:
         start: float,
         end: float,
         text: str,
-        spans: Optional[list[Dict[str, Any]]] = None,
+        spans: Optional[Any] = None,
         track_id: Optional[str] = None,
         speaker: Optional[str] = None,
         language: Optional[str] = None,
@@ -1453,10 +1632,6 @@ class ProjectTool:
         offset_y: Optional[float] = None,
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
-
         if spans is not None:
             try:
                 spans = self._coerce_json_array(spans, "spans")
@@ -1468,43 +1643,49 @@ class ProjectTool:
                     path=str(Path(project_path)),
                 )
 
-        command = AddSubtitleCueCommand(
-            SubtitleCue(
-                id=subtitle_id,
-                start=start,
-                end=end,
-                text=text,
-                spans=self._normalize_subtitle_spans(subtitle_id, spans or []),
-                track_id=track_id,
-                speaker=speaker,
-                language=language,
-                position=position,
-                margin_top=margin_top,
-                margin_bottom=margin_bottom,
-                margin_left=margin_left,
-                margin_right=margin_right,
-                offset_y=offset_y or 0.0,
-            )
-        )
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="add_project_subtitle",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            command = AddSubtitleCueCommand(
+                SubtitleCue(
+                    id=subtitle_id,
+                    start=start,
+                    end=end,
+                    text=self._normalize_transcribed_text(text),
+                    spans=self._normalize_subtitle_spans(subtitle_id, spans or []),
+                    track_id=track_id,
+                    speaker=speaker,
+                    language=language,
+                    position=position,
+                    margin_top=margin_top,
+                    margin_bottom=margin_bottom,
+                    margin_left=margin_left,
+                    margin_right=margin_right,
+                    offset_y=offset_y or 0.0,
+                )
+            )
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="add_project_subtitle",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
+
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1533,7 +1714,7 @@ class ProjectTool:
         start: Optional[float] = None,
         end: Optional[float] = None,
         text: Optional[str] = None,
-        spans: Optional[list[Dict[str, Any]]] = None,
+        spans: Optional[Any] = None,
         speaker: Optional[str] = None,
         language: Optional[str] = None,
         position: Optional[str] = None,
@@ -1560,40 +1741,48 @@ class ProjectTool:
                     path=str(Path(project_path)),
                 )
 
-        command = UpdateSubtitleCueCommand(
-            cue_id=subtitle_id,
-            start=start,
-            end=end,
-            text=text,
-            spans=self._normalize_subtitle_spans(subtitle_id, normalized_spans) if normalized_spans is not None else None,
-            speaker=speaker,
-            language=language,
-            position=position,
-            margin_top=margin_top,
-            margin_bottom=margin_bottom,
-            margin_left=margin_left,
-            margin_right=margin_right,
-            offset_y=offset_y,
-        )
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="update_project_subtitle",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
+            command = UpdateSubtitleCueCommand(
+                cue_id=subtitle_id,
+                start=start,
+                end=end,
+                text=self._normalize_transcribed_text(text) if text is not None else None,
+                spans=self._normalize_subtitle_spans(
+                    subtitle_id,
+                    normalized_spans,
+                ) if normalized_spans is not None else None,
+                speaker=speaker,
+                language=language,
+                position=position,
+                margin_top=margin_top,
+                margin_bottom=margin_bottom,
+                margin_left=margin_left,
+                margin_right=margin_right,
+                offset_y=offset_y,
+            )
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="update_project_subtitle",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1621,30 +1810,32 @@ class ProjectTool:
         subtitle_id: str,
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        command = RemoveSubtitleCueCommand(subtitle_id)
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="remove_project_subtitle",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+            command = RemoveSubtitleCueCommand(subtitle_id)
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="remove_project_subtitle",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1679,47 +1870,49 @@ class ProjectTool:
         index: Optional[int] = None,
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        cue = next((item for item in project.subtitles if item.id == subtitle_id), None)
-        if cue is None:
-            return self._failure(
-                "add_project_subtitle_span",
-                f"Subtitle cue not found: {subtitle_id}",
-                code="subtitle.not_found",
-                path=str(Path(project_path)),
+            cue = next((item for item in project.subtitles if item.id == subtitle_id), None)
+            if cue is None:
+                return self._failure(
+                    "add_project_subtitle_span",
+                    f"Subtitle cue not found: {subtitle_id}",
+                    code="subtitle.not_found",
+                    path=str(Path(project_path)),
+                )
+
+            span = SubtitleSpan(
+                id=span_id or "",
+                text=text,
+                color=color,
+                bold=bold,
+                italic=italic,
+                underline=underline,
             )
+            command = AddSubtitleSpanCommand(subtitle_id, span, index=index)
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="add_project_subtitle_span",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        span = SubtitleSpan(
-            id=span_id or "",
-            text=text,
-            color=color,
-            bold=bold,
-            italic=italic,
-            underline=underline,
-        )
-        command = AddSubtitleSpanCommand(subtitle_id, span, index=index)
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="add_project_subtitle_span",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1753,38 +1946,39 @@ class ProjectTool:
         underline: Optional[bool] = None,
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
+            command = UpdateSubtitleSpanCommand(
+                cue_id=subtitle_id,
+                span_id=span_id,
+                text=text,
+                color=color,
+                bold=bold,
+                italic=italic,
+                underline=underline,
+            )
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="update_project_subtitle_span",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        command = UpdateSubtitleSpanCommand(
-            cue_id=subtitle_id,
-            span_id=span_id,
-            text=text,
-            color=color,
-            bold=bold,
-            italic=italic,
-            underline=underline,
-        )
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="update_project_subtitle_span",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1813,30 +2007,32 @@ class ProjectTool:
         span_id: str,
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        command = RemoveSubtitleSpanCommand(subtitle_id, span_id)
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="remove_project_subtitle_span",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+            command = RemoveSubtitleSpanCommand(subtitle_id, span_id)
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="remove_project_subtitle_span",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1867,7 +2063,7 @@ class ProjectTool:
         project_path: str,
         subtitle_id: str,
         kind: str,
-        parameters: Optional[Dict[str, Any]] = None,
+        parameters: Optional[Any] = None,
         replace: bool = True,
         output_path: Optional[str] = None,
         span_id: Optional[str] = None,
@@ -1904,32 +2100,38 @@ class ProjectTool:
                 path=str(Path(project_path)),
             )
 
-        command = SetSubtitleEffectCommand(
-            cue_id=subtitle_id,
-            kind=kind,
-            parameters=normalized_parameters,
-            replace=replace,
-            span_id=span_id,
-        )
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="set_project_subtitle_effect",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            command = SetSubtitleEffectCommand(
+                cue_id=subtitle_id,
+                kind=kind,
+                parameters=normalized_parameters,
+                replace=replace,
+                span_id=span_id,
+            )
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="set_project_subtitle_effect",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
+
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -1963,30 +2165,32 @@ class ProjectTool:
 
         Pass *kind* to remove only effects of that type, or omit it to clear all effects.
         """
-        project, failure = self._load(project_path)
-        if failure:
-            return failure
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
 
-        command = RemoveSubtitleEffectCommand(cue_id=subtitle_id, kind=kind, span_id=span_id)
-        result = command.execute(project)
-        if not result.ok:
-            return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
-                operation="remove_project_subtitle_effect",
-                project_id=project.id,
-                project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
-            ).to_dict()
+            command = RemoveSubtitleEffectCommand(cue_id=subtitle_id, kind=kind, span_id=span_id)
+            result = command.execute(project)
+            if not result.ok:
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="remove_project_subtitle_effect",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
 
-        saved_path = self.store.save(project, output_path or project_path)
-        report = self.store.validate(project)
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
         return ToolResult(
             ok=report.passed,
             status="ok" if report.passed else "warn",
@@ -2006,6 +2210,136 @@ class ProjectTool:
             state={**result.state, "project_path": str(saved_path), "subtitle_id": subtitle_id},
             payload=project.to_dict(),
             summary=f"Removed subtitle effect(s) from cue {subtitle_id}",
+        ).to_dict()
+
+    def batch_update_project_subtitles(
+        self,
+        project_path: str,
+        entries: Any,
+        output_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply subtitle styling updates for many cues in one tool call.
+
+        Each entry accepts:
+          - subtitle_id (required)
+          - start, end, text, speaker, language
+          - position, margin_top, margin_bottom, margin_left, margin_right, offset_y
+          - spans: list of subtitle span objects
+          - effects: list of {kind, parameters, replace?, span_id?}
+        """
+        try:
+            normalized_entries = self._coerce_subtitle_style_entries(entries)
+        except (json.JSONDecodeError, ValueError) as exc:
+            return self._failure(
+                "batch_update_project_subtitles",
+                f"Invalid entries: {exc}",
+                code="subtitle.batch.invalid_entries",
+                path=str(Path(project_path)),
+            )
+
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
+            if failure:
+                return failure
+
+            updated_ids: list[str] = []
+            applied_effect_count = 0
+
+            for entry in normalized_entries:
+                subtitle_id = str(entry["subtitle_id"])
+                spans = entry.get("spans")
+                command = UpdateSubtitleCueCommand(
+                    cue_id=subtitle_id,
+                    start=entry.get("start"),
+                    end=entry.get("end"),
+                    text=self._normalize_transcribed_text(entry["text"]) if entry.get("text") is not None else None,
+                    spans=self._normalize_subtitle_spans(
+                        subtitle_id,
+                        spans,
+                    ) if spans is not None else None,
+                    speaker=entry.get("speaker"),
+                    language=entry.get("language"),
+                    position=entry.get("position"),
+                    margin_top=entry.get("margin_top"),
+                    margin_bottom=entry.get("margin_bottom"),
+                    margin_left=entry.get("margin_left"),
+                    margin_right=entry.get("margin_right"),
+                    offset_y=entry.get("offset_y"),
+                )
+                result = command.execute(project)
+                if not result.ok:
+                    return ToolResult(
+                        ok=False,
+                        status="error",
+                        code=result.code,
+                        message=result.message,
+                        operation="batch_update_project_subtitles",
+                        project_id=project.id,
+                        project_version=project.version,
+                        validation=result.validation,
+                        render_state=RenderState(ready=False, blockers=list(result.validation.errors)),
+                        state={"project_path": str(Path(project_path)), "subtitle_id": subtitle_id},
+                        summary=result.message,
+                        error=result.message,
+                    ).to_dict()
+
+                for effect in entry.get("effects") or []:
+                    effect_command = SetSubtitleEffectCommand(
+                        cue_id=subtitle_id,
+                        kind=str(effect["kind"]),
+                        parameters=dict(effect.get("parameters") or {}),
+                        replace=bool(effect.get("replace", True)),
+                        span_id=effect.get("span_id"),
+                    )
+                    effect_result = effect_command.execute(project)
+                    if not effect_result.ok:
+                        return ToolResult(
+                            ok=False,
+                            status="error",
+                            code=effect_result.code,
+                            message=effect_result.message,
+                            operation="batch_update_project_subtitles",
+                            project_id=project.id,
+                            project_version=project.version,
+                            validation=effect_result.validation,
+                            render_state=RenderState(ready=False, blockers=list(effect_result.validation.errors)),
+                            state={
+                                "project_path": str(Path(project_path)),
+                                "subtitle_id": subtitle_id,
+                                "effect_kind": effect.get("kind"),
+                            },
+                            summary=effect_result.message,
+                            error=effect_result.message,
+                        ).to_dict()
+                    applied_effect_count += 1
+
+                updated_ids.append(subtitle_id)
+
+            saved_path = self.store.save(project, output_path or project_path, _already_locked=True)
+            report = self.store.validate(project)
+
+        return ToolResult(
+            ok=report.passed,
+            status="ok" if report.passed else "warn",
+            code="subtitle.batch.updated",
+            message="Subtitle styling batch applied",
+            operation="batch_update_project_subtitles",
+            project_id=project.id,
+            project_version=project.version,
+            validation=ValidationSnapshot(
+                passed=report.passed,
+                warnings=[issue.message for issue in report.warnings],
+                errors=[issue.message for issue in report.errors],
+            ),
+            render_state=RenderState(ready=report.passed, blockers=[issue.code for issue in report.errors]),
+            artifacts=[ArtifactRef(type="project", path=str(saved_path))],
+            state={
+                "project_path": str(saved_path),
+                "updated_subtitle_ids": updated_ids,
+                "updated_subtitle_count": len(updated_ids),
+                "applied_effect_count": applied_effect_count,
+            },
+            summary=f"Applied styling to {len(updated_ids)} subtitles with {applied_effect_count} effect updates",
         ).to_dict()
 
     def transcribe_audio(
@@ -2035,7 +2369,7 @@ class ProjectTool:
             segments_iter, info = model.transcribe(str(source_path), language=language, vad_filter=True)
             cues: list[SubtitleCue] = []
             for index, segment in enumerate(segments_iter, start=1):
-                text = (segment.text or "").strip()
+                text = self._normalize_transcribed_text(segment.text or "")
                 if not text:
                     continue
                 cues.append(
@@ -2093,6 +2427,7 @@ class ProjectTool:
                 "media_path": str(source_path),
                 "subtitle_source_present": bool(project.subtitles),
                 "subtitle_count": len(project.subtitles),
+                "subtitle_text_normalized": self._get_opencc_converter() is not None,
             },
             payload=project.to_dict(),
             next_actions=["remove_project_silence", "prepare_project_render"],
@@ -2135,9 +2470,19 @@ class ProjectTool:
                 path=str(Path(project_path)),
             )
 
+        source_duration = self._project_source_duration(project, project_path)
+        if source_duration is None:
+            source_duration = max((float(item.end) for track_item in project.timeline.tracks for item in track_item.clips), default=0.0)
+
         speech_intervals = self._merge_intervals(
             [
-                (max(0.0, cue.start - padding), max(cue.end + padding, cue.start))
+                (
+                    max(0.0, min(float(cue.start - padding), source_duration)),
+                    max(
+                        max(0.0, min(float(cue.end + padding), source_duration)),
+                        max(0.0, min(float(cue.start), source_duration)),
+                    ),
+                )
                 for cue in sorted(project.subtitles, key=lambda item: (item.start, item.end))
             ]
         )
@@ -2193,6 +2538,8 @@ class ProjectTool:
                     start=new_start,
                     end=new_end,
                     text=cue.text,
+                    spans=[SubtitleSpan.from_dict(span.to_dict() if hasattr(span, "to_dict") else dict(span)) if isinstance(span, dict) else SubtitleSpan.from_dict(span.__dict__) if hasattr(span, "__dict__") else span for span in cue.spans],
+                    effects=[SubtitleEffect.from_dict(effect.to_dict() if hasattr(effect, "to_dict") else dict(effect)) if isinstance(effect, dict) else SubtitleEffect.from_dict(effect.__dict__) if hasattr(effect, "__dict__") else effect for effect in cue.effects],
                     track_id=cue.track_id,
                     speaker=cue.speaker,
                     language=cue.language,
@@ -2202,6 +2549,8 @@ class ProjectTool:
                     margin_left=cue.margin_left,
                     margin_right=cue.margin_right,
                     offset_y=cue.offset_y,
+                    font_size=cue.font_size,
+                    font_path=cue.font_path,
                     metadata=dict(cue.metadata),
                 )
             )
@@ -2657,7 +3006,22 @@ class ProjectTool:
             project_workspace.ensure()
             target_output = Path(output_path).resolve() if output_path else project_workspace.default_export_path(project.name)
             Path(target_output).parent.mkdir(parents=True, exist_ok=True)
-            composite.write_videofile(str(target_output), fps=fps, codec="libx264", audio_codec="aac")
+            render_output = target_output
+            temp_output: Optional[Path] = None
+            if any(ord(char) > 127 for char in str(target_output)):
+                fd, temp_output_str = tempfile.mkstemp(
+                    dir=str(target_output.parent),
+                    prefix="aiclip_render_",
+                    suffix=target_output.suffix or ".mp4",
+                )
+                os.close(fd)
+                temp_output = Path(temp_output_str)
+                temp_output.unlink(missing_ok=True)
+                render_output = temp_output
+
+            composite.write_videofile(str(render_output), fps=fps, codec="libx264", audio_codec="aac")
+            if temp_output is not None:
+                os.replace(temp_output, target_output)
         except Exception as exc:
             return self._failure(
                 "render_project",

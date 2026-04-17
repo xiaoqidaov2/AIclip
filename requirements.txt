@@ -6,3 +6,4 @@ imageio-ffmpeg
 opencv-python
 requests
 dashscope
+opencc-python-reimplemented

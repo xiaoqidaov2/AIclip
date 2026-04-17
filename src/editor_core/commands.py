@@ -8,6 +8,11 @@ from .contracts import ToolChange, ValidationSnapshot
 from .project import Asset, AudioStem, Clip, Comment, Effect, ExportPreset, Project, SubtitleCue, SubtitleEffect, SubtitleSpan, Track
 
 
+def _sync_cue_text_from_spans(cue: SubtitleCue) -> None:
+    if cue.spans:
+        cue.text = "".join(span.text for span in cue.spans)
+
+
 @dataclass
 class CommandResult:
     ok: bool
@@ -313,6 +318,7 @@ class AddSubtitleCueCommand(Command):
                 validation=ValidationSnapshot(passed=False, errors=[f"Duplicate subtitle id: {self.cue.id}"]),
             )
 
+        _sync_cue_text_from_spans(self.cue)
         project.subtitles.append(self.cue)
         project.bump_version()
         return CommandResult(
@@ -383,6 +389,7 @@ class UpdateSubtitleCueCommand(Command):
             cue.text = self.text
         if self.spans is not None:
             cue.spans = list(self.spans)
+            _sync_cue_text_from_spans(cue)
         if self.speaker is not None:
             cue.speaker = self.speaker
         if self.language is not None:
@@ -480,6 +487,8 @@ class AddSubtitleSpanCommand(Command):
         else:
             cue.spans.insert(max(0, self.index), span)
 
+        _sync_cue_text_from_spans(cue)
+
         project.bump_version()
         return CommandResult(
             ok=True,
@@ -551,6 +560,8 @@ class UpdateSubtitleSpanCommand(Command):
         if self.underline is not None:
             span.underline = self.underline
 
+        _sync_cue_text_from_spans(cue)
+
         project.bump_version()
         return CommandResult(
             ok=True,
@@ -597,6 +608,7 @@ class RemoveSubtitleSpanCommand(Command):
             )
 
         removed = cue.spans.pop(index)
+        _sync_cue_text_from_spans(cue)
         project.bump_version()
         return CommandResult(
             ok=True,

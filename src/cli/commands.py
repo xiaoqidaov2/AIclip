@@ -22,6 +22,7 @@ Core tools available to the agent:
   set_project_clip_speed     Change clip speed
   add_project_asset          Register a media asset
   add/update/remove_project_subtitle  Manage subtitle cues
+    batch_update_project_subtitles      Bulk subtitle positioning, highlighting, and effects
   add/update/remove_project_subtitle_span Manage highlighted words inside subtitles
   add/update/remove_project_audio_stem Manage dialogue/music/effects stems
   add/update/remove_project_effect    Manage visual effects

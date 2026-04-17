@@ -1,0 +1,35 @@
+batch_update_project_subtitles
+
+Purpose
+- Update many subtitle cues in one call.
+- Use this when you need to reposition, recolor, highlight, or add multiple effects across several subtitles.
+- Prefer this tool over repeated subtitle/span/effect calls when styling 3 or more subtitles.
+
+Inputs
+- `project_path`
+- `entries`: list of objects. Each object supports:
+  - `subtitle_id`: required
+  - `start`, `end`, `text`, `speaker`, `language`: optional cue updates
+  - `position`: optional `top`, `middle`, `bottom`, or `below_faces`
+  - `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `offset_y`: optional layout fields
+  - `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`
+  - `effects`: optional list of effect objects
+    - `kind`: required
+    - `parameters`: optional dict
+    - `replace`: optional bool, default true
+    - `span_id`: optional target one span instead of the full cue
+- `output_path`: optional
+
+Returns
+- `decision`
+- `changes`
+- `validation`
+- `render_state`
+- `state.updated_subtitle_ids`
+- `state.updated_subtitle_count`
+- `state.applied_effect_count`
+
+Notes
+- This tool applies all requested cue updates and effects under one project lock and one save.
+- It is the preferred path for bulk subtitle styling because it keeps tool-call count low and avoids oversized agent request chains.
+- You can combine `position=below_faces` with colored spans and stacked effects in the same entry.
