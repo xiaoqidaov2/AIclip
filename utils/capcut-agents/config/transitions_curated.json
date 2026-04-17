@@ -1,0 +1,12 @@
+{
+  "opening_effects": {
+    "effects": {
+      "开幕": {
+        "description": "视频从黑屏展开到正常画面，适合所有视频的开头引入",
+        "best_for": ["知识分享", "口播讲解", "日常分享"],
+        "duration_hint": "1-2秒",
+        "priority": 1
+      }
+    }
+  }
+}

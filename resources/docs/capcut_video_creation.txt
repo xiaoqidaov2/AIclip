@@ -1,0 +1,104 @@
+capcut_video_creation CapCut 视频生成工具
+
+自动解析 ASR 文件，为视频添加特效、贴纸等视觉元素，并生成剪映草稿和最终视频。
+
+**重要提示：此工具必须在 `render_project` 工具被调用之后才能使用，因为它的 `video_files` 参数需要 `render_project` 返回的视频地址。此工具是整个工作流的最后一步。**
+
+## 参数
+
+- asr_file_path（必填）：ASR 字幕文件路径（.srt 或 .vtt 格式）。
+  **获取方式**：从 `generate_subtitle_srt` 或 `generate_subtitle_vtt` 工具的返回结果中获取 `output_path` 字段的值。
+  例如：如果字幕工具返回 `{"output_path": "C:/videos/subtitle.srt", ...}`，则此参数应填 `"C:/videos/subtitle.srt"`
+  
+- video_files（必填）：视频文件路径列表，例如：`["C:/videos/v1.mp4"]`
+  **获取方式**：必须从 `render_project` 工具的返回结果中获取 `output_path` 或 `final_path` 字段的值。
+  例如：如果 `render_project` 返回 `{"output_path": "C:/videos/rendered.mp4", "final_path": "C:/videos/rendered.mp4", ...}`，则此参数应填 `["C:/videos/rendered.mp4"]`
+
+- draft_name（可选）：剪映草稿名称，默认为 "quick_video"
+
+- max_effects（可选）：视频中允许添加的最大视觉特效数量，默认 5
+
+- max_stickers（可选）：视频中允许添加的最大贴纸数量，默认 3
+
+## 完整工作流示例
+
+以下是一个典型的视频处理工作流，展示了如何串联多个工具并最终调用 capcut_video_creation：
+
+**步骤 1: 生成字幕文件**
+调用 `generate_subtitle_srt`，传入音频/视频路径，得到：
+```json
+{
+  "output_path": "C:/project/video.srt",
+  "format": "srt",
+  ...
+}
+```
+
+**步骤 2: 渲染项目生成最终视频**
+调用 `render_project` 生成最终视频，传入项目路径等参数，得到：
+```json
+{
+  "output_path": "C:/project/final_video.mp4",
+  "final_path": "C:/project/final_video.mp4",
+  ...
+}
+```
+
+**步骤 3: 调用 capcut_video_creation（最后一步）**
+参数：
+- asr_file_path: "C:/project/video.srt" （来自步骤1的 output_path）
+- video_files: ["C:/project/final_video.mp4"] （来自步骤2 render_project 的 output_path 或 final_path）
+
+## 返回值
+
+
+返回一个 dict，包含以下字段：
+
+- success（bool）：是否成功
+- draft_id：剪映草稿 ID
+- draft_path：剪映草稿保存路径
+- final_video_path：最终导出的视频文件路径
+- transitions：转场效果列表
+- effects：视觉特效列表
+- stickers：贴纸列表
+- error（仅失败时）：错误信息
+
+## 输出示例
+
+```json
+{
+  "success": true,
+  "draft_id": "abc123",
+  "draft_path": "C:/JianyingPro/Data/Projects/abc123",
+  "final_video_path": "C:/output/final_video.mp4",
+  "transitions": [
+    {"type": "opening", "effect_name": "淡入", "start_time": 0, "duration": 1.5}
+  ],
+  "effects": [
+    {"effect_name": "缩放", "start_time": 2.0, "duration": 3.0}
+  ],
+  "stickers": []
+}
+```
+
+## 工作流程
+
+1. 读取并解析 ASR 文件，提取文案和时间戳
+2. 根据文案内容智能分析，决定添加哪些特效和贴纸
+3. 创建剪映草稿并导入视频素材
+4. 应用所有视觉元素（转场、特效、贴纸）
+5. 导出最终视频文件
+
+## 使用场景
+
+- 快速制作短视频内容
+- 为视频自动添加视觉增强效果
+- 批量生成带有特效的视频
+
+## 注意事项
+
+- **顺序约束：必须在调用 `render_project` 生成最终视频后，作为整个工作流的最后一步调用。**
+- 需要安装剪映专业版（Windows 版本）
+- ASR 文件必须包含准确的时间戳信息
+- 特效和贴纸数量受 max_effects 和 max_stickers 参数限制
+- 首次运行可能需要初始化模型，耗时较长

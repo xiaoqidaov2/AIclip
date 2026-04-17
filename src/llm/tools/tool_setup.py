@@ -3,6 +3,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .capcut_tool import CapCutVideoTool
 from .net_asset_tool import NetAssetTool
 from .project_tool import ProjectTool
 from .tool_registration import ToolRegistration
@@ -31,6 +32,7 @@ class ToolSetup:
             "project": ProjectTool(),
             "net_asset": NetAssetTool(),
             "vision": VisionTool(),
+            "capcut": CapCutVideoTool(),
         }
         self._specs: List[ToolSpec] = [
             ToolSpec(
@@ -373,6 +375,14 @@ class ToolSetup:
                 source="net_asset",
                 attr="download_net_asset",
                 doc_file="download_net_asset.txt",
+            ),
+            ToolSpec(
+                name="capcut_video_creation",
+                title="CapCut Video Creation Tool",
+                description="Create videos with ASR file, auto-add effects and stickers. IMPORTANT: This tool MUST be called AFTER `render_project` has been executed, because its `video_files` parameter requires the output video path from `render_project`. Use this as the FINAL step in the workflow.",
+                source="capcut",
+                attr="create_video_from_asr",
+                doc_file="capcut_video_creation.txt",
             ),
         ]
         self._setup()
