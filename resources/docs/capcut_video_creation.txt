@@ -2,7 +2,7 @@ capcut_video_creation CapCut 视频生成工具
 
 自动解析 ASR 文件，为视频添加特效、贴纸等视觉元素，并生成剪映草稿和最终视频。
 
-**重要提示：此工具必须作为整个视频处理工作流的【最后一步】调用，因为它需要输入已经生成的视频地址。**
+**重要提示：此工具必须在 `render_project` 工具被调用之后才能使用，因为它的 `video_files` 参数需要 `render_project` 返回的视频地址。此工具是整个工作流的最后一步。**
 
 ## 参数
 
@@ -11,8 +11,8 @@ capcut_video_creation CapCut 视频生成工具
   例如：如果字幕工具返回 `{"output_path": "C:/videos/subtitle.srt", ...}`，则此参数应填 `"C:/videos/subtitle.srt"`
   
 - video_files（必填）：视频文件路径列表，例如：`["C:/videos/v1.mp4"]`
-  **获取方式**：从前置视频处理工具（如 `concatenate_videos`, `add_subtitles`, `trim_video`, `cutout_video`, `resize_video`, `crop_video`）的返回结果中获取 `output_path` 字段的值。
-  例如：如果视频合并工具返回 `{"output_path": "C:/videos/merged.mp4", ...}`，则此参数应填 `["C:/videos/merged.mp4"]`
+  **获取方式**：必须从 `render_project` 工具的返回结果中获取 `output_path` 或 `final_path` 字段的值。
+  例如：如果 `render_project` 返回 `{"output_path": "C:/videos/rendered.mp4", "final_path": "C:/videos/rendered.mp4", ...}`，则此参数应填 `["C:/videos/rendered.mp4"]`
 
 - draft_name（可选）：剪映草稿名称，默认为 "quick_video"
 
@@ -34,15 +34,12 @@ capcut_video_creation CapCut 视频生成工具
 }
 ```
 
-**步骤 2: 处理视频（可选，根据需要选择）**
-例如调用 `add_subtitles` 将字幕烧录到视频中，传入：
-- video_path: 原始视频路径
-- subtitle_path: 步骤1返回的 "C:/project/video.srt"
-
-得到：
+**步骤 2: 渲染项目生成最终视频**
+调用 `render_project` 生成最终视频，传入项目路径等参数，得到：
 ```json
 {
-  "output_path": "C:/project/video_subbed.mp4",
+  "output_path": "C:/project/final_video.mp4",
+  "final_path": "C:/project/final_video.mp4",
   ...
 }
 ```
@@ -50,7 +47,7 @@ capcut_video_creation CapCut 视频生成工具
 **步骤 3: 调用 capcut_video_creation（最后一步）**
 参数：
 - asr_file_path: "C:/project/video.srt" （来自步骤1的 output_path）
-- video_files: ["C:/project/video_subbed.mp4"] （来自步骤2的 output_path）
+- video_files: ["C:/project/final_video.mp4"] （来自步骤2 render_project 的 output_path 或 final_path）
 
 ## 返回值
 
@@ -100,7 +97,7 @@ capcut_video_creation CapCut 视频生成工具
 
 ## 注意事项
 
-- **顺序约束：必须在所有前置视频处理（如剪辑、语音合成、ASR）完成后作为最后一步调用。**
+- **顺序约束：必须在调用 `render_project` 生成最终视频后，作为整个工作流的最后一步调用。**
 - 需要安装剪映专业版（Windows 版本）
 - ASR 文件必须包含准确的时间戳信息
 - 特效和贴纸数量受 max_effects 和 max_stickers 参数限制

@@ -9,4 +9,5 @@ __all__ = [
     "ToolSetup",
     "ProjectTool",
     "VisionTool",
+    "CapCutVideoTool",
 ]
