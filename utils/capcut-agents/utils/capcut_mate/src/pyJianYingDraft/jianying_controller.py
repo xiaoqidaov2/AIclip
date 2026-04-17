@@ -80,6 +80,8 @@ class JianyingController:
 
     def __init__(self):
         """初始化剪映控制器, 此时剪映应该处于目录页"""
+        # 初始化 COM，确保在多线程环境下 UI 自动化正常工作
+        self.ui_automation_initializer = uia.UIAutomationInitializerInThread()
         self.get_window()
 
     def find_and_click_draft(self, draft_name: str, max_retries: int = 10, retry_interval: float = 3.0) -> None:

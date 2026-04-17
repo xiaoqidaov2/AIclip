@@ -52,16 +52,16 @@ DOWNLOAD_FILE_SIZE_LIMIT = int(os.getenv("DOWNLOAD_FILE_SIZE_LIMIT", str(200 * 1
 
 # ==================== OpenAI 配置 ====================
 # OpenAI API 密钥
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-stNCnaSdsAm0cJ9nDFwfCXQqpawyKcEKxbdIstKTEzAmBex8")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-1781ced2391a4788a5c37623e0416949")
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-bf-addfef18-e0f2-4493-9876-c42a15eed4ea")
 
 # OpenAI API 基础 URL（可选，用于兼容第三方 API 服务）
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://happyapi.org/v1")
+OPENAI_BASE_URL = os.getenv("OPENAI_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 # OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://154.219.101.233:8080/v1")
 
 # OpenAI 模型名称
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini-2025-08-07")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "qwen3.6-plus")
 # OPENAI_MODEL = os.getenv("OPENAI_MODEL", "free")
 
 # 视频输出目录
-VIDEO_OUTPUT_PATH = os.getenv("VIDEO_OUTPUT_PATH", r"C:\Users\64061\capcut-mate\temp")
+VIDEO_OUTPUT_PATH = os.getenv("VIDEO_OUTPUT_PATH", r"tmp")
