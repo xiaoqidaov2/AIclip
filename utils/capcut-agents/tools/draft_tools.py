@@ -16,8 +16,6 @@ from langchain.tools import tool
 
 from pydantic import BaseModel, Field
 
-from src.service.create_draft import create_draft as service_create_draft
-
 
 class CreateDraftInput(BaseModel):
     """创建草稿的输入参数"""
@@ -68,14 +66,18 @@ def create_draft_tool(
         包含草稿ID和路径的结果
     """
     try:
+        from urllib.parse import parse_qs, urlparse
+
+        try:
+            from src.service.create_draft import create_draft as service_create_draft
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError("src.service.create_draft is unavailable") from exc
+
         draft_url = service_create_draft(width=width, height=height)
-        
-        # 从 URL 提取 draft_id
-        from urllib.parse import urlparse, parse_qs
+
         parsed = urlparse(draft_url)
         draft_id = parse_qs(parsed.query).get("draft_id", [""])[0]
-        
-        # 获取草稿路径
+
         from config import DRAFT_DIR
         draft_path = Path(DRAFT_DIR) / draft_id
         
@@ -118,7 +120,6 @@ def save_draft_tool(
     try:
         from config import DRAFT_DIR
 
-        
         draft_path = Path(DRAFT_DIR) / draft_id
 
         

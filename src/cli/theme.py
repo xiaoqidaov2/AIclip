@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+import os
+import sys
+
+
+class CliTheme:
+    def __init__(self) -> None:
+        self.enabled = self._supports_color()
+
+    def _supports_color(self) -> bool:
+        if os.getenv("NO_COLOR"):
+            return False
+        if sys.platform == "win32" and os.getenv("TERM") is None:
+            return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    def paint(self, text: str, color: str = "", bold: bool = False, dim: bool = False) -> str:
+        if not self.enabled:
+            return text
+
+        parts = []
+        if bold:
+            parts.append("1")
+        if dim:
+            parts.append("2")
+        if color:
+            parts.append(color)
+        if not parts:
+            return text
+        return f"\x1b[{';'.join(parts)}m{text}\x1b[0m"
+
+    def info(self, text: str) -> str:
+        return self.paint(text, "36")
+
+    def success(self, text: str) -> str:
+        return self.paint(text, "32")
+
+    def warn(self, text: str) -> str:
+        return self.paint(text, "33")
+
+    def error(self, text: str) -> str:
+        return self.paint(text, "31")
+
+    def muted(self, text: str) -> str:
+        return self.paint(text, "90")
+
+    def accent(self, text: str) -> str:
+        return self.paint(text, "35", bold=True)
+
+    def title(self, text: str) -> str:
+        return self.paint(text, "96", bold=True)
+
+    def label(self, text: str) -> str:
+        return self.paint(text, "94", bold=True)

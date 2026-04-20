@@ -13,19 +13,13 @@ from src.llm.tools import ToolSetup
 
 def main():
     tool_setup = ToolSetup()
+    skill_name = "project_core"
 
     llm_config = LLMConfig()
     agent = AgentBuilder.build_agent(
         model=llm_config.create_llm(),
-        tools=tool_setup.get_tools(
-            [
-                "load_project",
-                "save_project",
-                "set_project_metadata",
-                "prepare_project_render",
-            ]
-        ),
-        system_prompt="You are a core project editing assistant.",
+        tools=tool_setup.get_skill_tools(skill_name),
+        system_prompt=tool_setup.build_system_prompt("You are a core project editing assistant.", skill_name=skill_name),
     )
 
     messages = [

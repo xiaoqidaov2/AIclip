@@ -1,4 +1,12 @@
-def show_help() -> None:
+def show_help(skill_names: list[str] | None = None) -> None:
+    skill_lines = ""
+    if skill_names:
+        skill_lines = (
+            "\n\nSkills:\n"
+            "  /skills            List available skills\n"
+            "  /skill <name>      Switch and lock the active skill\n"
+            "  /auto_skill        Return to automatic skill routing\n"
+        )
     print(
         """
 Available commands:
@@ -10,6 +18,7 @@ Available commands:
   /status           Show current session state
   /coordinate <task> Run the coordinator workflow
   /workers          Show current workers
+""" + skill_lines + """
 
 Core tools available to the agent:
   create_project_from_media  Create a project from raw media

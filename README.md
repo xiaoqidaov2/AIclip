@@ -53,9 +53,11 @@ OPENAI_TEMPERATURE=0
 
 ```bash
 python main.py
+python main.py --help
+python main.py --command "/help"
 ```
 
-启动后会进入交互式 CLI。
+启动后会进入交互式 CLI。`--help` 会先显示启动参数帮助，然后退出。`--command` 会直接执行一条指令后退出，不进入交互式提示符。
 
 ## CLI 命令
 
@@ -109,4 +111,3 @@ python main.py
 - 默认输出文件通常会在源文件旁边生成，并带有操作后缀，比如 `_trimmed`、`_cutout`、`_concat`、`_resized`、`_cropped`、`_subbed`
 - `bash_command` 适合作为补充能力，不建议优先依赖
 - 工具的详细说明在 `resources/docs/` 下
-

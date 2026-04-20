@@ -4,9 +4,11 @@ import json
 import sys
 import threading
 import time
-from typing import Any, Dict, Iterator
+from typing import Any, Dict
 
 from langchain_core.messages import AIMessage, ToolMessage
+
+from .theme import CliTheme
 
 
 class CLIRenderer:
@@ -14,9 +16,11 @@ class CLIRenderer:
 
     MAX_SUMMARY_LENGTH = 200
     SPINNER_CHARS = ["|", "/", "-", "\\"]
+    STATIC_PROGRESS_TOOLS = {"render_project"}
 
     def __init__(self) -> None:
         self.verbose = False
+        self.theme = CliTheme()
         self._spinner_idx = 0
         self._current_status = ""
         self._has_status = False
@@ -59,13 +63,12 @@ class CLIRenderer:
                 spinner = self.SPINNER_CHARS[self._spinner_idx % len(self.SPINNER_CHARS)]
                 self._spinner_idx += 1
 
-            sys.stdout.write(f"\r{spinner} {text}")
+            sys.stdout.write(f"\r{self.theme.muted(spinner)} {self.theme.info(text)}")
             sys.stdout.flush()
             time.sleep(0.15)
 
     def render_stream(self, stream_iterator_provider: Any) -> tuple[str, list[Any]]:
-        import time
-        max_consecutive_failures = 5  # 连续失败才算耗尽，有进展则重置
+        max_consecutive_failures = 5
         base_delay = 2
 
         consecutive_failures = 0
@@ -114,24 +117,23 @@ class CLIRenderer:
                     "429" in error_str
                     or "rate limit" in error_str
                     or "tpm limit" in error_str
-                    or "null value for" in error_str and "choices" in error_str
+                    or ("null value for" in error_str and "choices" in error_str)
                 )
 
                 if is_retryable and callable(stream_iterator_provider):
                     if made_progress:
-                        # 本次已成功传输部分数据，重置连续失败计数
                         consecutive_failures = 0
                     consecutive_failures += 1
                     delay = base_delay * (2 ** (consecutive_failures - 1))
                     print(
-                        f"\n[!] 触发频率限制或请求拥挤 (Rate Limit, 429). {delay} 秒后尝试重新连接"
-                        f" (连续失败 {consecutive_failures}/{max_consecutive_failures} 次)...",
+                        f"\n{self.theme.warn('[rate]')} 429 / rate limit. {delay}s 后重试 "
+                        f"(连续失败 {consecutive_failures}/{max_consecutive_failures})",
                         flush=True,
                     )
                     time.sleep(delay)
                     continue
                 else:
-                    print(f"\n流式处理出错: {e}")
+                    print(f"\n{self.theme.error('[stream]')} {e}")
                     return final_content, collected_messages
 
         self.clear_status()
@@ -158,25 +160,32 @@ class CLIRenderer:
         name = getattr(msg, "name", "tool")
         content = getattr(msg, "content", "")
         summary = self._extract_summary(content)
+        extracted_content = self._extract_content(content)
 
         self.clear_status()
         if self.verbose:
-            print(f"\n└─ [{name}] 完成")
+            print(f"\n{self.theme.success('└─')} {self.theme.label(f'[{name}]')} 完成")
             if len(str(content)) > self.MAX_SUMMARY_LENGTH:
-                print(f"   结果: {summary}")
-                print("   (完整内容已截断，使用 /verbose 查看)")
+                print(f"   {self.theme.muted('结果:')} {summary}")
+                print(f"   {self.theme.muted('(完整内容已截断，使用 /verbose 查看)')}")
             else:
-                print(f"   结果: {content}")
+                print(f"   {self.theme.muted('结果:')} {content}")
         else:
-            print(f"\n└─ [{name}] {summary}")
+            print(f"\n{self.theme.success('└─')} {self.theme.label(f'[{name}]')} {summary}")
+
+        if extracted_content and extracted_content != summary:
+            print(f"   {self.theme.muted('Content:')} {self._truncate_text(extracted_content, self.MAX_SUMMARY_LENGTH)}")
 
     def _show_tool_call(self, name: str, args: Dict) -> None:
         self.clear_status()
-        print(f"\n├─ 调用工具: {name}")
+        print(f"\n{self.theme.info('├─')} 调用工具: {self.theme.accent(name)}")
         if args:
             args_str = self._format_args(args)
-            print(f"├─ 参数: {args_str}")
-        self.show_status(f"正在执行 {name}...")
+            print(f"{self.theme.info('│  ')} 参数: {self.theme.muted(args_str)}")
+        if name in self.STATIC_PROGRESS_TOOLS:
+            print(self.theme.info(f"[tool] {name} running; MoviePy progress bar follows below."))
+        else:
+            self.show_status(f"Executing {name}...")
         self.last_tool_calls.append({"name": name, "args": args})
 
     def _format_args(self, args: Dict) -> str:
@@ -189,12 +198,12 @@ class CLIRenderer:
         return ", ".join(parts)
 
     def render_response(self, response: Any) -> str:
-        self.show_status("思考中...")
+        self.show_status("Thinking...")
 
         messages = response.get("messages", []) if isinstance(response, dict) else []
         if not messages:
             self.clear_status()
-            print("没有响应消息")
+            print(self.theme.warn("没有响应消息"))
             return ""
 
         final_content = ""
@@ -217,7 +226,7 @@ class CLIRenderer:
         self.clear_status()
 
         if final_content:
-            print(f"\n{final_content}")
+            print(f"\n{self.theme.title(final_content)}")
 
         return final_content
 
@@ -267,6 +276,39 @@ class CLIRenderer:
         if len(text) <= self.MAX_SUMMARY_LENGTH:
             return text
         return text[: self.MAX_SUMMARY_LENGTH - 3] + "..."
+
+    def _extract_content(self, content: Any) -> str:
+        if isinstance(content, dict):
+            value = content.get("content")
+            if value is None:
+                value = content.get("summary")
+            if value is None:
+                value = content.get("message")
+            return str(value).strip() if value is not None else ""
+
+        if content is None:
+            return ""
+
+        if isinstance(content, str):
+            text = content.strip()
+            if not text:
+                return ""
+            try:
+                data = json.loads(text)
+                if isinstance(data, dict):
+                    value = data.get("content") or data.get("summary") or data.get("message")
+                    if value is not None:
+                        return str(value).strip()
+            except (json.JSONDecodeError, TypeError):
+                pass
+            return text
+
+        return str(content).strip()
+
+    def _truncate_text(self, text: str, max_length: int) -> str:
+        if len(text) <= max_length:
+            return text
+        return text[: max_length - 3] + "..."
 
 
 def render_stream_simple(stream_iterator_provider: Any, verbose: bool = False) -> str:

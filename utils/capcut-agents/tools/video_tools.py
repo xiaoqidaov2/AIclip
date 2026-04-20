@@ -17,10 +17,6 @@ from langchain.tools import tool
 
 from pydantic import BaseModel, Field
 
-import config
-from src.service.add_videos import add_videos_async
-from src.service.export_video import export_video
-
 
 class AddVideosInput(BaseModel):
     """添加视频的输入参数"""
@@ -55,10 +51,15 @@ def add_videos_tool(
         添加结果，包含成功和失败的视频列表
     """
     try:
-        # 构建 draft_url
+        import config
+
+        try:
+            from src.service.add_videos import add_videos_async
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError("src.service.add_videos is unavailable") from exc
+
         draft_url = f"{config.DOWNLOAD_URL}openapi/capcut-mate/v1/get_draft?draft_id={draft_id}"
-        
-        # 转换 video_files 为 video_infos JSON 字符串
+
         video_infos_list = []
         for vf in video_files:
             duration = _get_video_duration(vf["path"])
@@ -68,8 +69,7 @@ def add_videos_tool(
                 "end": duration
             })
         video_infos = json.dumps(video_infos_list)
-        
-        # 运行异步添加视频
+
         draft_url, track_id, video_ids, segment_ids = asyncio.run(add_videos_async(
             draft_url=draft_url,
             video_infos=video_infos
@@ -125,16 +125,21 @@ def export_video_tool(
         导出结果
     """
     try:
-        # 构建导出参数
-        from src.schemas.export_video import ExportVideoRequest
+        try:
+            from src.schemas.export_video import ExportVideoRequest
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError("src.schemas.export_video is unavailable") from exc
 
-        
+        try:
+            from src.service.export_video import export_video
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError("src.service.export_video is unavailable") from exc
+
         request = ExportVideoRequest(
-
             draft_id=draft_id,
             output_path=output_path
         )
-        
+
         result = export_video(request)
         
         if result.success:
