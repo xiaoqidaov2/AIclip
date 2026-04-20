@@ -1,6 +1,4 @@
-.env
-__pycache__/
-.venv/
-*.mp4
-*.pyc
-*.srt
+```
+# No build artifacts, dependency directories, or temporary files detected in changes
+# Only source/config files present (.py, .md), so no additional ignores needed
+```
