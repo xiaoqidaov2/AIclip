@@ -1,4 +1,4 @@
-from src.editor_core.project import AudioStem, Clip, Effect, Project, SubtitleCue, SubtitleSpan, Timeline, Track
+from src.editor_core.project import Asset, AudioStem, Clip, Effect, Project, SubtitleCue, SubtitleSpan, Timeline, Track
 from src.editor_core.validation import can_render, validate_project
 
 
@@ -37,7 +37,7 @@ def test_validate_project_reports_invalid_clip_range_and_missing_asset_reference
     project = Project(
         id="project-1",
         name="Invalid Clip",
-        assets=[],
+        assets=[Asset(id="asset-1", path="media/file.mp4")],
         timeline=Timeline(
             tracks=[Track(id="track-1", kind="video", clips=[Clip(id="clip-1", asset_id="missing-asset", start=1.0, end=1.0)])]
         ),
@@ -69,4 +69,3 @@ def test_validate_project_reports_subtitle_span_text_mismatch():
     )
     report = validate_project(project)
     assert any(issue.code == "subtitle.spans.text_mismatch" for issue in report.errors)
-
