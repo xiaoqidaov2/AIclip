@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from .project_tool_postparse_common import *
+
+
+class ProjectToolPostParseUpdateProjectSubtitleSpanMixin:
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(name)
+
+    def update_project_subtitle_span(
+        self,
+        project_path: str,
+        subtitle_id: str,
+        span_id: str,
+        text: Optional[str] = None,
+        color: Optional[str] = None,
+        bold: Optional[bool] = None,
+        italic: Optional[bool] = None,
+        underline: Optional[bool] = None,
+        output_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+
+        with self.store.project_lock(project_path):
+
+            project, failure = self._load(project_path)
+
+            if failure:
+
+                return failure
+
+            command = UpdateSubtitleSpanCommand(
+                cue_id=subtitle_id,
+                span_id=span_id,
+                text=text,
+                color=color,
+                bold=bold,
+                italic=italic,
+                underline=underline,
+            )
+
+            result = command.execute(project)
+
+            if not result.ok:
+
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="update_project_subtitle_span",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(
+                        ready=False, blockers=list(result.validation.errors)
+                    ),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
+
+            saved_path = self.store.save(
+                project, output_path or project_path, _already_locked=True
+            )
+
+            report = self.store.validate(project)
+
+        return ToolResult(
+            ok=report.passed,
+            status="ok" if report.passed else "warn",
+            code="subtitle_span.updated",
+            message="Subtitle span updated",
+            operation="update_project_subtitle_span",
+            project_id=project.id,
+            project_version=project.version,
+            changes=result.changes,
+            validation=ValidationSnapshot(
+                passed=report.passed,
+                warnings=[issue.message for issue in report.warnings],
+                errors=[issue.message for issue in report.errors],
+            ),
+            render_state=RenderState(
+                ready=report.passed, blockers=[issue.code for issue in report.errors]
+            ),
+            artifacts=[ArtifactRef(type="project", path=str(saved_path))],
+            state={
+                **result.state,
+                "project_path": str(saved_path),
+                "subtitle_id": subtitle_id,
+                "span_id": span_id,
+            },
+            payload=project.to_dict(),
+            summary=f"Updated subtitle span {span_id}",
+        ).to_dict()

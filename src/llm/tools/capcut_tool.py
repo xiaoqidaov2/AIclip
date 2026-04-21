@@ -1,121 +1,1 @@
-"""
-CapCut Mate - 视频生成工具 (LangChain 封装)
-"""
-
-import sys
-from pathlib import Path
-import json
-from langchain_core.tools import tool
-
-# 确保 utils/capcut-agents 在 Python 路径中
-_capcut_agents_path = str(Path(__file__).resolve().parents[3] / "utils" / "capcut-agents")
-if _capcut_agents_path not in sys.path:
-    sys.path.insert(0, _capcut_agents_path)
-
-# 解决 src 命名空间冲突
-import src
-_mate_src_path = str(Path(_capcut_agents_path) / "utils" / "capcut_mate" / "src")
-if hasattr(src, "__path__") and _mate_src_path not in src.__path__:
-    src.__path__.append(_mate_src_path)
-
-# 添加 capcut_mate 到系统路径以支持 import config 等顶层导入
-_capcut_mate_path = str(Path(_capcut_agents_path) / "utils" / "capcut_mate")
-if _capcut_mate_path not in sys.path:
-    sys.path.insert(0, _capcut_mate_path)
-
-from core.video_processor import create_video
-
-from tools.asr_utils import parse_asr_output
-
-
-class CapCutVideoTool:
-    """CapCut 视频生成工具集
-
-    支持能力：
-    - 解析 ASR 文件获取文案和时间戳
-    - 自动添加特效和贴纸
-    - 生成剪映草稿并导出视频
-
-    所有方法返回结构化 dict，便于 agent 串联后续操作。
-    """
-
-    def create_video_from_asr(
-        self,
-        project_path: str,
-        video_files: list[str],
-        draft_name: str = "quick_video",
-        max_effects: int = 5,
-        max_stickers: int = 3,
-    ) -> dict:
-        """使用工程文件创建视频
-
-        Args:
-            project_path: 工程文件路径（JSON 格式，包含 subtitles 字段）
-            video_files: 视频文件路径列表 (例如: ["C:/videos/v1.mp4"])
-            draft_name: 剪映草稿名称，默认为 "quick_video"
-            max_effects: 视频中允许添加的最大视觉特效数量，默认 5
-            max_stickers: 视频中允许添加的最大贴纸数量，默认 3
-
-        Returns:
-            dict: 包含 success, draft_id, draft_path, final_video_path 等字段的结果字典
-        """
-        try:
-            with open(project_path, 'r', encoding='utf-8') as f:
-                project_data = json.load(f)
-
-            # 从工程文件提取字幕数据并转换为 parse_asr_output 支持的格式
-            subtitles = project_data.get("subtitles", [])
-            asr_data = [
-                {"text": cue.get("text", ""), "start": cue.get("start", 0), "end": cue.get("end", 0)}
-                for cue in subtitles
-            ]
-
-            script, timestamps = parse_asr_output(asr_data)
-
-            print(f"📋 解析 ASR 输出: {len(timestamps)} 个片段, 文案 {len(script)} 字")
-            for ts in timestamps:
-                print(f"   [{ts['start']:.1f}s - {ts['end']:.1f}s] {ts['text']}")
-
-            return create_video(
-                video_files=video_files,
-                script=script,
-                timestamps=timestamps,
-                draft_name=draft_name,
-                max_effects=max_effects,
-                max_stickers=max_stickers
-            )
-        except Exception as e:
-            return {"success": False, "error": f"解析 ASR 文件或创建视频失败: {str(e)}"}
-
-
-# LangChain tool wrapper
-@tool
-def capcut_video_creation_tool(
-    project_path: str,
-    video_files: list[str],
-    draft_name: str = "quick_video",
-    max_effects: int = 5,
-    max_stickers: int = 3,
-) -> dict:
-    """使用 CapCut Mate 快速创建视频工具。该工具会从工程文件中读取字幕信息获取文案和时间戳。
-
-    重要：此工具必须作为整个工作流的最后一步使用，因为它需要输入最终的视频素材地址。
-
-    参数:
-        project_path: 工程文件路径（JSON 格式，包含 subtitles 字段）
-        video_files: 视频文件路径列表 (例如: ["C:/videos/v1.mp4"])
-        draft_name: 剪映草稿名称，默认为 "quick_video"，不需要修改
-        max_effects: 视频中允许添加的最大视觉特效数量，默认 5
-        max_stickers: 视频中允许添加的最大贴纸数量，默认 3
-
-    返回:
-        包含 success (bool), draft_id, draft_path, final_video_path 等字段的结果字典。
-    """
-    tool_instance = CapCutVideoTool()
-    return tool_instance.create_video_from_asr(
-        project_path=project_path,
-        video_files=video_files,
-        draft_name=draft_name,
-        max_effects=max_effects,
-        max_stickers=max_stickers,
-    )
+"""CapCut Mate - 视频生成工具 (LangChain 封装)"""import sysfrom pathlib import Pathimport jsonfrom langchain_core.tools import tool# 确保 utils/capcut-agents 在 Python 路径中_capcut_agents_path = str(    Path(__file__).resolve().parents[3] / "utils" / "capcut-agents")if _capcut_agents_path not in sys.path:    sys.path.insert(0, _capcut_agents_path)# 解决 src 命名空间冲突import src_mate_src_path = str(Path(_capcut_agents_path) / "utils" / "capcut_mate" / "src")if hasattr(src, "__path__") and _mate_src_path not in src.__path__:    src.__path__.append(_mate_src_path)# 添加 capcut_mate 到系统路径以支持 import config 等顶层导入_capcut_mate_path = str(Path(_capcut_agents_path) / "utils" / "capcut_mate")if _capcut_mate_path not in sys.path:    sys.path.insert(0, _capcut_mate_path)from core.video_processor import create_videofrom tools.asr_utils import parse_asr_outputclass CapCutVideoTool:    """CapCut 视频生成工具集    支持能力：    - 解析 ASR 文件获取文案和时间戳    - 自动添加特效和贴纸    - 生成剪映草稿并导出视频    所有方法返回结构化 dict，便于 agent 串联后续操作。    """    def create_video_from_asr(        self,        project_path: str,        video_files: list[str],        draft_name: str = "quick_video",        max_effects: int = 5,        max_stickers: int = 3,    ) -> dict:        """使用工程文件创建视频        Args:            project_path: 工程文件路径（JSON 格式，包含 subtitles 字段）            video_files: 视频文件路径列表 (例如: ["C:/videos/v1.mp4"])            draft_name: 剪映草稿名称，默认为 "quick_video"            max_effects: 视频中允许添加的最大视觉特效数量，默认 5            max_stickers: 视频中允许添加的最大贴纸数量，默认 3        Returns:            dict: 包含 success, draft_id, draft_path, final_video_path 等字段的结果字典        """        try:            with open(project_path, "r", encoding="utf-8") as f:                project_data = json.load(f)            # 从工程文件提取字幕数据并转换为 parse_asr_output 支持的格式            subtitles = project_data.get("subtitles", [])            asr_data = [                {                    "text": cue.get("text", ""),                    "start": cue.get("start", 0),                    "end": cue.get("end", 0),                }                for cue in subtitles            ]            script, timestamps = parse_asr_output(asr_data)            print(f"📋 解析 ASR 输出: {len(timestamps)} 个片段, 文案 {len(script)} 字")            for ts in timestamps:                print(f"   [{ts['start']:.1f}s - {ts['end']:.1f}s] {ts['text']}")            return create_video(                video_files=video_files,                script=script,                timestamps=timestamps,                draft_name=draft_name,                max_effects=max_effects,                max_stickers=max_stickers,            )        except Exception as e:            return {"success": False, "error": f"解析 ASR 文件或创建视频失败: {str(e)}"}# LangChain tool wrapper@tooldef capcut_video_creation_tool(    project_path: str,    video_files: list[str],    draft_name: str = "quick_video",    max_effects: int = 5,    max_stickers: int = 3,) -> dict:    """使用 CapCut Mate 快速创建视频工具。该工具会从工程文件中读取字幕信息获取文案和时间戳。    重要：此工具必须作为整个工作流的最后一步使用，因为它需要输入最终的视频素材地址。    参数:        project_path: 工程文件路径（JSON 格式，包含 subtitles 字段）        video_files: 视频文件路径列表 (例如: ["C:/videos/v1.mp4"])        draft_name: 剪映草稿名称，默认为 "quick_video"，不需要修改        max_effects: 视频中允许添加的最大视觉特效数量，默认 5        max_stickers: 视频中允许添加的最大贴纸数量，默认 3    返回:        包含 success (bool), draft_id, draft_path, final_video_path 等字段的结果字典。    """    tool_instance = CapCutVideoTool()    return tool_instance.create_video_from_asr(        project_path=project_path,        video_files=video_files,        draft_name=draft_name,        max_effects=max_effects,        max_stickers=max_stickers,    )

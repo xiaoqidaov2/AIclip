@@ -1,91 +1,1 @@
-from __future__ import annotations
-
-from xml.etree import ElementTree as ET
-import json
-from typing import Any, Dict
-
-from .project import Project
-
-
-def project_to_json(project: Project, *, indent: int = 2) -> str:
-    return json.dumps(project.to_dict(), ensure_ascii=False, indent=indent, default=str)
-
-
-def project_from_json(text: str) -> Project:
-    return Project.from_dict(json.loads(text))
-
-
-def _coerce_scalar(text: str) -> Any:
-    value = text.strip()
-    if value == "":
-        return ""
-    if value.lower() in {"true", "false"}:
-        return value.lower() == "true"
-    try:
-        if "." in value:
-            return float(value)
-        return int(value)
-    except ValueError:
-        return value
-
-
-def _dict_to_element(parent: ET.Element, key: str, value: Any) -> None:
-    if isinstance(value, dict):
-        node = ET.SubElement(parent, key)
-        node.set("data-kind", "dict")
-        for child_key, child_value in value.items():
-            _dict_to_element(node, child_key, child_value)
-        return
-
-    if isinstance(value, list):
-        node = ET.SubElement(parent, key)
-        node.set("data-kind", "list")
-        for item in value:
-            _dict_to_element(node, "item", item)
-        return
-
-    node = ET.SubElement(parent, key)
-    if value is not None:
-        node.text = str(value)
-
-
-def _element_to_value(element: ET.Element) -> Any:
-    children = list(element)
-    if not children:
-        data_kind = element.attrib.get("data-kind")
-        if data_kind == "list":
-            return []
-        if data_kind == "dict":
-            return {}
-        return _coerce_scalar(element.text or "")
-
-    if all(child.tag == "item" for child in children):
-        return [_element_to_value(child) for child in children]
-
-    grouped: Dict[str, list[Any]] = {}
-    for child in children:
-        grouped.setdefault(child.tag, []).append(_element_to_value(child))
-
-    result: Dict[str, Any] = {}
-    for key, values in grouped.items():
-        result[key] = values if len(values) > 1 else values[0]
-    return result
-
-
-def project_to_xml(project: Project) -> str:
-    root = ET.Element("project")
-    for key, value in project.to_dict().items():
-        _dict_to_element(root, key, value)
-    try:
-        ET.indent(root, space="  ")
-    except AttributeError:
-        pass
-    return ET.tostring(root, encoding="unicode")
-
-
-def project_from_xml(text: str) -> Project:
-    root = ET.fromstring(text)
-    data = _element_to_value(root)
-    if not isinstance(data, dict):
-        raise ValueError("project XML did not contain a project mapping")
-    return Project.from_dict(data)
+from __future__ import annotationsfrom xml.etree import ElementTree as ETimport jsonfrom typing import Any, Dictfrom .project import Projectdef project_to_json(project: Project, *, indent: int = 2) -> str:    return json.dumps(project.to_dict(), ensure_ascii=False, indent=indent, default=str)def project_from_json(text: str) -> Project:    return Project.from_dict(json.loads(text))def _coerce_scalar(text: str) -> Any:    value = text.strip()    if value == "":        return ""    if value.lower() in {"true", "false"}:        return value.lower() == "true"    try:        if "." in value:            return float(value)        return int(value)    except ValueError:        return valuedef _dict_to_element(parent: ET.Element, key: str, value: Any) -> None:    if isinstance(value, dict):        node = ET.SubElement(parent, key)        node.set("data-kind", "dict")        for child_key, child_value in value.items():            _dict_to_element(node, child_key, child_value)        return    if isinstance(value, list):        node = ET.SubElement(parent, key)        node.set("data-kind", "list")        for item in value:            _dict_to_element(node, "item", item)        return    node = ET.SubElement(parent, key)    if value is not None:        node.text = str(value)def _element_to_value(element: ET.Element) -> Any:    children = list(element)    if not children:        data_kind = element.attrib.get("data-kind")        if data_kind == "list":            return []        if data_kind == "dict":            return {}        return _coerce_scalar(element.text or "")    if all(child.tag == "item" for child in children):        return [_element_to_value(child) for child in children]    grouped: Dict[str, list[Any]] = {}    for child in children:        grouped.setdefault(child.tag, []).append(_element_to_value(child))    result: Dict[str, Any] = {}    for key, values in grouped.items():        result[key] = values if len(values) > 1 else values[0]    return resultdef project_to_xml(project: Project) -> str:    root = ET.Element("project")    for key, value in project.to_dict().items():        _dict_to_element(root, key, value)    try:        ET.indent(root, space="  ")    except AttributeError:        pass    return ET.tostring(root, encoding="unicode")def project_from_xml(text: str) -> Project:    root = ET.fromstring(text)    data = _element_to_value(root)    if not isinstance(data, dict):        raise ValueError("project XML did not contain a project mapping")    return Project.from_dict(data)

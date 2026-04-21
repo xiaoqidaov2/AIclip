@@ -15,8 +15,11 @@ Inputs
 - `max_tokens`: optional response token limit
 
 Returns
-- `decision`
-- `payload.analysis`: model analysis text
+- `ok`: true on success
+- `content`: model analysis text (primary field to read)
+- `message`: same as `content` (alias)
+- `summary`: same as `content` (alias)
+- `decision`: structured decision dict
 - `state.model`, `state.media_type`, `state.usage`
 
 Notes
@@ -24,4 +27,5 @@ Notes
   - `AICLIP_VISION_API_BASE`
   - `AICLIP_VISION_API_KEY`
   - `AICLIP_VISION_MODEL`
-- Falls back to `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+- The `OPENAI_API_KEY` value is NOT used as a fallback for vision requests to avoid
+  sending it to non-OpenAI endpoints. Set `AICLIP_VISION_API_KEY` explicitly.

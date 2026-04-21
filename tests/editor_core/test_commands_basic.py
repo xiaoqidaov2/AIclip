@@ -1,114 +1,1 @@
-from src.editor_core.commands import (
-    AddAssetCommand,
-    AddClipCommand,
-    AddSubtitleCueCommand,
-    SetClipSpeedCommand,
-    SetProjectMetadataCommand,
-    TrimClipCommand,
-)
-from src.editor_core.project import Asset, Clip, Project, SubtitleCue, SubtitleSpan, Timeline, Track
-
-
-def _project_with_asset() -> Project:
-    return Project(id="project-1", name="Demo", assets=[Asset(id="asset-1", path="/tmp/a.mp4")], timeline=Timeline(tracks=[]))
-
-
-def test_set_project_metadata_command_updates_and_bumps_version():
-    project = Project(id="project-1", name="Demo", metadata={"a": 1})
-    initial_version = project.version
-    result = SetProjectMetadataCommand({"b": 2}).execute(project)
-    assert result.ok is True
-    assert project.metadata == {"a": 1, "b": 2}
-    assert project.version == initial_version + 1
-
-
-def test_add_asset_command_rejects_duplicate_and_accepts_new_asset():
-    project = _project_with_asset()
-    duplicate_result = AddAssetCommand(Asset(id="asset-1", path="/tmp/dup.mp4")).execute(project)
-    assert duplicate_result.ok is False
-    assert duplicate_result.code == "asset.duplicate"
-
-    added_result = AddAssetCommand(Asset(id="asset-2", path="/tmp/b.mp4")).execute(project)
-    assert added_result.ok is True
-    assert project.find_asset("asset-2") is not None
-
-
-def test_add_clip_command_requires_asset_and_track_or_creates_track():
-    project = Project(id="project-1", name="Demo")
-    missing_asset = AddClipCommand(Clip(id="clip-1", asset_id="missing", start=0.0, end=1.0), track_id="v1").execute(project)
-    assert missing_asset.ok is False
-    assert missing_asset.code == "clip.asset.missing"
-
-    project = _project_with_asset()
-    no_create = AddClipCommand(
-        Clip(id="clip-1", asset_id="asset-1", start=0.0, end=1.0),
-        track_id="v1",
-        create_track=False,
-    ).execute(project)
-    assert no_create.ok is False
-    assert no_create.code == "track.not_found"
-
-    created = AddClipCommand(
-        Clip(id="clip-1", asset_id="asset-1", start=1.0, end=2.0),
-        track_id="v1",
-        create_track=True,
-    ).execute(project)
-    assert created.ok is True
-    assert project.find_track("v1") is not None
-    assert project.timeline.duration == 2.0
-
-
-def test_add_clip_command_inserts_and_sorts_clips():
-    project = _project_with_asset()
-    project.timeline.tracks.append(Track(id="v1", kind="video", clips=[Clip(id="clip-b", asset_id="asset-1", start=5.0, end=6.0)]))
-    result = AddClipCommand(Clip(id="clip-a", asset_id="asset-1", start=1.0, end=2.0), track_id="v1", insert_index=0).execute(project)
-    assert result.ok is True
-    assert [clip.id for clip in project.find_track("v1").clips] == ["clip-a", "clip-b"]
-
-
-def test_trim_clip_command_validates_range_and_updates_clip():
-    project = _project_with_asset()
-    project.timeline.tracks.append(Track(id="v1", kind="video", clips=[Clip(id="clip-1", asset_id="asset-1", start=0.0, end=4.0)]))
-    invalid = TrimClipCommand("clip-1", start=2.0, end=2.0).execute(project)
-    assert invalid.ok is False
-    assert invalid.code == "clip.range.invalid"
-
-    missing = TrimClipCommand("missing", start=1.0, end=2.0).execute(project)
-    assert missing.ok is False
-    assert missing.code == "clip.not_found"
-
-    ok = TrimClipCommand("clip-1", start=1.0, end=3.0).execute(project)
-    assert ok.ok is True
-    clip = project.find_clip("clip-1")
-    assert clip.start == 1.0 and clip.end == 3.0
-
-
-def test_set_clip_speed_command_handles_missing_and_existing_clip():
-    project = _project_with_asset()
-    missing = SetClipSpeedCommand("missing", speed=1.5).execute(project)
-    assert missing.ok is False
-    assert missing.code == "clip.not_found"
-
-    project.timeline.tracks.append(Track(id="v1", kind="video", clips=[Clip(id="clip-1", asset_id="asset-1", start=0.0, end=2.0)]))
-    ok = SetClipSpeedCommand("clip-1", speed=1.5).execute(project)
-    assert ok.ok is True
-    assert project.find_clip("clip-1").speed == 1.5
-
-
-def test_add_subtitle_cue_command_syncs_text_from_spans_and_blocks_duplicates():
-    project = Project(id="project-1", name="Demo")
-    cue = SubtitleCue(
-        id="cue-1",
-        start=0.0,
-        end=1.0,
-        text="placeholder",
-        spans=[SubtitleSpan(id="s1", text="Hi"), SubtitleSpan(id="s2", text="!")],
-    )
-    first = AddSubtitleCueCommand(cue).execute(project)
-    assert first.ok is True
-    assert project.subtitles[0].text == "Hi!"
-
-    duplicate = AddSubtitleCueCommand(cue).execute(project)
-    assert duplicate.ok is False
-    assert duplicate.code == "subtitle.duplicate"
-
+from src.editor_core.commands import (    AddAssetCommand,    AddClipCommand,    AddSubtitleCueCommand,    SetClipSpeedCommand,    SetProjectMetadataCommand,    TrimClipCommand,)from src.editor_core.project import (    Asset,    Clip,    Project,    SubtitleCue,    SubtitleSpan,    Timeline,    Track,)def _project_with_asset() -> Project:    return Project(        id="project-1",        name="Demo",        assets=[Asset(id="asset-1", path="/tmp/a.mp4")],        timeline=Timeline(tracks=[]),    )def test_set_project_metadata_command_updates_and_bumps_version():    project = Project(id="project-1", name="Demo", metadata={"a": 1})    initial_version = project.version    result = SetProjectMetadataCommand({"b": 2}).execute(project)    assert result.ok is True    assert project.metadata == {"a": 1, "b": 2}    assert project.version == initial_version + 1def test_add_asset_command_rejects_duplicate_and_accepts_new_asset():    project = _project_with_asset()    duplicate_result = AddAssetCommand(        Asset(id="asset-1", path="/tmp/dup.mp4")    ).execute(project)    assert duplicate_result.ok is False    assert duplicate_result.code == "asset.duplicate"    added_result = AddAssetCommand(Asset(id="asset-2", path="/tmp/b.mp4")).execute(        project    )    assert added_result.ok is True    assert project.find_asset("asset-2") is not Nonedef test_add_clip_command_requires_asset_and_track_or_creates_track():    project = Project(id="project-1", name="Demo")    missing_asset = AddClipCommand(        Clip(id="clip-1", asset_id="missing", start=0.0, end=1.0), track_id="v1"    ).execute(project)    assert missing_asset.ok is False    assert missing_asset.code == "clip.asset.missing"    project = _project_with_asset()    no_create = AddClipCommand(        Clip(id="clip-1", asset_id="asset-1", start=0.0, end=1.0),        track_id="v1",        create_track=False,    ).execute(project)    assert no_create.ok is False    assert no_create.code == "track.not_found"    created = AddClipCommand(        Clip(id="clip-1", asset_id="asset-1", start=1.0, end=2.0),        track_id="v1",        create_track=True,    ).execute(project)    assert created.ok is True    assert project.find_track("v1") is not None    assert project.timeline.duration == 2.0def test_add_clip_command_inserts_and_sorts_clips():    project = _project_with_asset()    project.timeline.tracks.append(        Track(            id="v1",            kind="video",            clips=[Clip(id="clip-b", asset_id="asset-1", start=5.0, end=6.0)],        )    )    result = AddClipCommand(        Clip(id="clip-a", asset_id="asset-1", start=1.0, end=2.0),        track_id="v1",        insert_index=0,    ).execute(project)    assert result.ok is True    assert [clip.id for clip in project.find_track("v1").clips] == ["clip-a", "clip-b"]def test_trim_clip_command_validates_range_and_updates_clip():    project = _project_with_asset()    project.timeline.tracks.append(        Track(            id="v1",            kind="video",            clips=[Clip(id="clip-1", asset_id="asset-1", start=0.0, end=4.0)],        )    )    invalid = TrimClipCommand("clip-1", start=2.0, end=2.0).execute(project)    assert invalid.ok is False    assert invalid.code == "clip.range.invalid"    missing = TrimClipCommand("missing", start=1.0, end=2.0).execute(project)    assert missing.ok is False    assert missing.code == "clip.not_found"    ok = TrimClipCommand("clip-1", start=1.0, end=3.0).execute(project)    assert ok.ok is True    clip = project.find_clip("clip-1")    assert clip.start == 1.0 and clip.end == 3.0def test_set_clip_speed_command_handles_missing_and_existing_clip():    project = _project_with_asset()    missing = SetClipSpeedCommand("missing", speed=1.5).execute(project)    assert missing.ok is False    assert missing.code == "clip.not_found"    project.timeline.tracks.append(        Track(            id="v1",            kind="video",            clips=[Clip(id="clip-1", asset_id="asset-1", start=0.0, end=2.0)],        )    )    ok = SetClipSpeedCommand("clip-1", speed=1.5).execute(project)    assert ok.ok is True    assert project.find_clip("clip-1").speed == 1.5def test_add_subtitle_cue_command_syncs_text_from_spans_and_blocks_duplicates():    project = Project(id="project-1", name="Demo")    cue = SubtitleCue(        id="cue-1",        start=0.0,        end=1.0,        text="placeholder",        spans=[SubtitleSpan(id="s1", text="Hi"), SubtitleSpan(id="s2", text="!")],    )    first = AddSubtitleCueCommand(cue).execute(project)    assert first.ok is True    assert project.subtitles[0].text == "Hi!"    duplicate = AddSubtitleCueCommand(cue).execute(project)    assert duplicate.ok is False    assert duplicate.code == "subtitle.duplicate"

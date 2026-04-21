@@ -1,71 +1,1 @@
-from __future__ import annotations
-
-import os
-from typing import Any, Dict, List
-
-import requests
-
-from .providers import AssetResult, BaseProvider
-
-_SEARCH_URL = "https://freesound.org/apiv2/search/text/"
-_TIMEOUT = 10
-
-# Fields we request to minimise payload
-_FIELDS = "id,name,description,duration,tags,license,username,previews,url"
-
-
-class FreesoundProvider(BaseProvider):
-    name = "freesound"
-
-    def __init__(self) -> None:
-        self._api_key = os.getenv("FREESOUND_API_KEY", "")
-
-    def is_available(self) -> bool:
-        return bool(self._api_key)
-
-    def search(
-        self,
-        query: str,
-        media_type: str = "audio",
-        per_page: int = 10,
-        **kwargs,
-    ) -> List[AssetResult]:
-        if not self.is_available():
-            raise RuntimeError("FREESOUND_API_KEY not set")
-
-        per_page = max(1, min(per_page, 150))
-
-        params: Dict[str, Any] = {
-            "query": query,
-            "page_size": per_page,
-            "fields": _FIELDS,
-            "token": self._api_key,
-        }
-        resp = requests.get(_SEARCH_URL, params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        results = []
-        for item in data.get("results", []):
-            previews = item.get("previews", {})
-            download_url = previews.get("preview-hq-mp3") or previews.get("preview-hq-ogg", "")
-            preview_url = previews.get("preview-lq-mp3", download_url)
-            if not download_url:
-                continue
-            tags = item.get("tags", []) or []
-            license_url = item.get("license", "")
-            results.append(AssetResult(
-                id=str(item["id"]),
-                title=item.get("name", "Freesound Audio"),
-                media_type="audio",
-                provider=self.name,
-                preview_url=preview_url,
-                download_url=download_url,
-                page_url=item.get("url", f"https://freesound.org/s/{item['id']}/"),
-                author=item.get("username", ""),
-                attribution=f"Sound by {item.get('username', '')} from Freesound ({license_url})",
-                license=license_url,
-                duration=item.get("duration"),
-                tags=tags[:10],
-                description=item.get("description", "")[:200],
-            ))
-        return results
+from __future__ import annotationsimport osfrom typing import Any, Dict, Listimport requestsfrom .providers import AssetResult, BaseProvider_SEARCH_URL = "https://freesound.org/apiv2/search/text/"_TIMEOUT = 10# Fields we request to minimise payload_FIELDS = "id,name,description,duration,tags,license,username,previews,url"class FreesoundProvider(BaseProvider):    name = "freesound"    def __init__(self) -> None:        self._api_key = os.getenv("FREESOUND_API_KEY", "")    def is_available(self) -> bool:        return bool(self._api_key)    def search(        self,        query: str,        media_type: str = "audio",        per_page: int = 10,        **kwargs,    ) -> List[AssetResult]:        if not self.is_available():            raise RuntimeError("FREESOUND_API_KEY not set")        per_page = max(1, min(per_page, 150))        params: Dict[str, Any] = {            "query": query,            "page_size": per_page,            "fields": _FIELDS,            "token": self._api_key,        }        resp = requests.get(_SEARCH_URL, params=params, timeout=_TIMEOUT)        resp.raise_for_status()        data = resp.json()        results = []        for item in data.get("results", []):            previews = item.get("previews", {})            download_url = previews.get("preview-hq-mp3") or previews.get(                "preview-hq-ogg", ""            )            preview_url = previews.get("preview-lq-mp3", download_url)            if not download_url:                continue            tags = item.get("tags", []) or []            license_url = item.get("license", "")            results.append(                AssetResult(                    id=str(item["id"]),                    title=item.get("name", "Freesound Audio"),                    media_type="audio",                    provider=self.name,                    preview_url=preview_url,                    download_url=download_url,                    page_url=item.get("url", f"https://freesound.org/s/{item['id']}/"),                    author=item.get("username", ""),                    attribution=f"Sound by {item.get('username', '')} from Freesound ({license_url})",                    license=license_url,                    duration=item.get("duration"),                    tags=tags[:10],                    description=item.get("description", "")[:200],                )            )        return results

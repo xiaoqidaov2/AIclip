@@ -1,66 +1,1 @@
-from __future__ import annotations
-
-import hashlib
-import re
-from pathlib import Path
-from typing import Optional
-from urllib.parse import urlparse
-
-import requests
-
-_CHUNK = 8192
-_TIMEOUT_CONNECT = 10
-_TIMEOUT_READ = 60
-
-
-def _safe_filename(url: str, hint: str = "") -> str:
-    """Derive a safe filename from URL or hint."""
-    if hint:
-        return re.sub(r'[\\/:*?"<>|]', "_", hint)
-    parsed = urlparse(url)
-    name = Path(parsed.path).name
-    if name and "." in name:
-        return re.sub(r'[\\/:*?"<>|]', "_", name)
-    ext = ".mp4" if "mp4" in url else ".mp3" if "mp3" in url else ".jpg"
-    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-    return f"net_asset_{url_hash}{ext}"
-
-
-def download_file(
-    url: str,
-    dest_dir: str | Path = "tmp",
-    filename: Optional[str] = None,
-) -> Path:
-    """Stream-download *url* into *dest_dir* and return the local Path.
-
-    Args:
-        url: Direct download URL (from an AssetResult).
-        dest_dir: Directory to save into.  Created if it does not exist.
-        filename: Override the output filename; inferred from URL if omitted.
-
-    Returns:
-        Absolute Path of the saved file.
-
-    Raises:
-        requests.HTTPError: On non-2xx HTTP response.
-        OSError: On disk I/O failure.
-    """
-    dest = Path(dest_dir)
-    dest.mkdir(parents=True, exist_ok=True)
-
-    fname = _safe_filename(url, filename or "")
-    out_path = dest / fname
-
-    # Avoid re-downloading if already present
-    if out_path.exists() and out_path.stat().st_size > 0:
-        return out_path.resolve()
-
-    headers = {"User-Agent": "AiClip/1.0 (media downloader)"}
-    with requests.get(url, stream=True, timeout=(_TIMEOUT_CONNECT, _TIMEOUT_READ), headers=headers) as resp:
-        resp.raise_for_status()
-        with open(out_path, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=_CHUNK):
-                if chunk:
-                    fh.write(chunk)
-
-    return out_path.resolve()
+from __future__ import annotationsimport hashlibimport refrom pathlib import Pathfrom typing import Optionalfrom urllib.parse import urlparseimport requests_CHUNK = 8192_TIMEOUT_CONNECT = 10_TIMEOUT_READ = 60def _safe_filename(url: str, hint: str = "") -> str:    """Derive a safe filename from URL or hint."""    if hint:        return re.sub(r'[\\/:*?"<>|]', "_", hint)    parsed = urlparse(url)    name = Path(parsed.path).name    if name and "." in name:        return re.sub(r'[\\/:*?"<>|]', "_", name)    ext = ".mp4" if "mp4" in url else ".mp3" if "mp3" in url else ".jpg"    url_hash = hashlib.md5(url.encode()).hexdigest()[:8]    return f"net_asset_{url_hash}{ext}"def download_file(    url: str,    dest_dir: str | Path = "tmp",    filename: Optional[str] = None,) -> Path:    """Stream-download *url* into *dest_dir* and return the local Path.    Args:        url: Direct download URL (from an AssetResult).        dest_dir: Directory to save into.  Created if it does not exist.        filename: Override the output filename; inferred from URL if omitted.    Returns:        Absolute Path of the saved file.    Raises:        requests.HTTPError: On non-2xx HTTP response.        OSError: On disk I/O failure.    """    dest = Path(dest_dir)    dest.mkdir(parents=True, exist_ok=True)    fname = _safe_filename(url, filename or "")    out_path = dest / fname    # Avoid re-downloading if already present    if out_path.exists() and out_path.stat().st_size > 0:        return out_path.resolve()    headers = {"User-Agent": "AiClip/1.0 (media downloader)"}    with requests.get(        url, stream=True, timeout=(_TIMEOUT_CONNECT, _TIMEOUT_READ), headers=headers    ) as resp:        resp.raise_for_status()        with open(out_path, "wb") as fh:            for chunk in resp.iter_content(chunk_size=_CHUNK):                if chunk:                    fh.write(chunk)    return out_path.resolve()

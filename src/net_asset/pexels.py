@@ -1,108 +1,1 @@
-from __future__ import annotations
-
-import os
-from typing import Any, Dict, List, Optional
-
-import requests
-
-from .providers import AssetResult, BaseProvider
-
-_PHOTOS_SEARCH = "https://api.pexels.com/v1/search"
-_VIDEOS_SEARCH = "https://api.pexels.com/v1/videos/search"
-_TIMEOUT = 10
-
-
-def _best_video_file(video_files: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Pick the highest-quality mp4 that is not HLS."""
-    mp4 = [f for f in video_files if f.get("file_type") == "video/mp4" and f.get("link")]
-    if not mp4:
-        return None
-    quality_order = {"hd": 0, "sd": 1}
-    mp4.sort(key=lambda f: (quality_order.get(f.get("quality", "sd"), 2), -(f.get("width") or 0)))
-    return mp4[0]
-
-
-class PexelsProvider(BaseProvider):
-    name = "pexels"
-
-    def __init__(self) -> None:
-        self._api_key = os.getenv("PEXELS_API_KEY", "")
-
-    def is_available(self) -> bool:
-        return bool(self._api_key)
-
-    def _headers(self) -> Dict[str, str]:
-        return {"Authorization": self._api_key}
-
-    def search(
-        self,
-        query: str,
-        media_type: str = "video",
-        per_page: int = 10,
-        orientation: str = "",
-        **kwargs,
-    ) -> List[AssetResult]:
-        if not self.is_available():
-            raise RuntimeError("PEXELS_API_KEY not set")
-
-        per_page = max(1, min(per_page, 80))
-
-        if media_type == "image":
-            return self._search_photos(query, per_page, orientation)
-        return self._search_videos(query, per_page, orientation)
-
-    def _search_photos(self, query: str, per_page: int, orientation: str) -> List[AssetResult]:
-        params: Dict[str, Any] = {"query": query, "per_page": per_page}
-        if orientation:
-            params["orientation"] = orientation
-        resp = requests.get(_PHOTOS_SEARCH, headers=self._headers(), params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        results = []
-        for item in data.get("photos", []):
-            src = item.get("src", {})
-            results.append(AssetResult(
-                id=str(item["id"]),
-                title=item.get("alt", "Pexels Photo"),
-                media_type="image",
-                provider=self.name,
-                preview_url=src.get("small", ""),
-                download_url=src.get("original", ""),
-                page_url=item.get("url", ""),
-                author=item.get("photographer", ""),
-                attribution=f"Photo by {item.get('photographer', '')} on Pexels",
-                license="Pexels License",
-                width=item.get("width"),
-                height=item.get("height"),
-            ))
-        return results
-
-    def _search_videos(self, query: str, per_page: int, orientation: str) -> List[AssetResult]:
-        params: Dict[str, Any] = {"query": query, "per_page": per_page}
-        if orientation:
-            params["orientation"] = orientation
-        resp = requests.get(_VIDEOS_SEARCH, headers=self._headers(), params=params, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        results = []
-        for item in data.get("videos", []):
-            best = _best_video_file(item.get("video_files", []))
-            if not best:
-                continue
-            user = item.get("user", {})
-            results.append(AssetResult(
-                id=str(item["id"]),
-                title=f"Pexels Video {item['id']}",
-                media_type="video",
-                provider=self.name,
-                preview_url=item.get("image", ""),
-                download_url=best["link"],
-                page_url=item.get("url", ""),
-                author=user.get("name", ""),
-                attribution=f"Video by {user.get('name', '')} on Pexels",
-                license="Pexels License",
-                duration=item.get("duration"),
-                width=item.get("width"),
-                height=item.get("height"),
-            ))
-        return results
+from __future__ import annotationsimport osfrom typing import Any, Dict, List, Optionalimport requestsfrom .providers import AssetResult, BaseProvider_PHOTOS_SEARCH = "https://api.pexels.com/v1/search"_VIDEOS_SEARCH = "https://api.pexels.com/v1/videos/search"_TIMEOUT = 10def _best_video_file(video_files: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:    """Pick the highest-quality mp4 that is not HLS."""    mp4 = [        f for f in video_files if f.get("file_type") == "video/mp4" and f.get("link")    ]    if not mp4:        return None    quality_order = {"hd": 0, "sd": 1}    mp4.sort(        key=lambda f: (            quality_order.get(f.get("quality", "sd"), 2),            -(f.get("width") or 0),        )    )    return mp4[0]class PexelsProvider(BaseProvider):    name = "pexels"    def __init__(self) -> None:        self._api_key = os.getenv("PEXELS_API_KEY", "")    def is_available(self) -> bool:        return bool(self._api_key)    def _headers(self) -> Dict[str, str]:        return {"Authorization": self._api_key}    def search(        self,        query: str,        media_type: str = "video",        per_page: int = 10,        orientation: str = "",        **kwargs,    ) -> List[AssetResult]:        if not self.is_available():            raise RuntimeError("PEXELS_API_KEY not set")        per_page = max(1, min(per_page, 80))        if media_type == "image":            return self._search_photos(query, per_page, orientation)        return self._search_videos(query, per_page, orientation)    def _search_photos(        self, query: str, per_page: int, orientation: str    ) -> List[AssetResult]:        params: Dict[str, Any] = {"query": query, "per_page": per_page}        if orientation:            params["orientation"] = orientation        resp = requests.get(            _PHOTOS_SEARCH, headers=self._headers(), params=params, timeout=_TIMEOUT        )        resp.raise_for_status()        data = resp.json()        results = []        for item in data.get("photos", []):            src = item.get("src", {})            results.append(                AssetResult(                    id=str(item["id"]),                    title=item.get("alt", "Pexels Photo"),                    media_type="image",                    provider=self.name,                    preview_url=src.get("small", ""),                    download_url=src.get("original", ""),                    page_url=item.get("url", ""),                    author=item.get("photographer", ""),                    attribution=f"Photo by {item.get('photographer', '')} on Pexels",                    license="Pexels License",                    width=item.get("width"),                    height=item.get("height"),                )            )        return results    def _search_videos(        self, query: str, per_page: int, orientation: str    ) -> List[AssetResult]:        params: Dict[str, Any] = {"query": query, "per_page": per_page}        if orientation:            params["orientation"] = orientation        resp = requests.get(            _VIDEOS_SEARCH, headers=self._headers(), params=params, timeout=_TIMEOUT        )        resp.raise_for_status()        data = resp.json()        results = []        for item in data.get("videos", []):            best = _best_video_file(item.get("video_files", []))            if not best:                continue            user = item.get("user", {})            results.append(                AssetResult(                    id=str(item["id"]),                    title=f"Pexels Video {item['id']}",                    media_type="video",                    provider=self.name,                    preview_url=item.get("image", ""),                    download_url=best["link"],                    page_url=item.get("url", ""),                    author=user.get("name", ""),                    attribution=f"Video by {user.get('name', '')} on Pexels",                    license="Pexels License",                    duration=item.get("duration"),                    width=item.get("width"),                    height=item.get("height"),                )            )        return results
