@@ -5,7 +5,6 @@ AiClip is a Python CLI for AI-assisted video editing. Keep changes inside the ex
 
 - `main.py` wires config, tool setup, agent construction, and the CLI app.
 - `src/cli/` owns interactive commands, streaming output, and session state.
-- `src/coordinator/` owns the multi-step `/coordinate` workflow and its research → synthesis → implementation → verification phases.
 - `src/editor_core/` is the source of truth for project data, persistence, validation, and workspace/path handling.
 - `src/llm/` owns model config, tool registration, skills, and agent-facing tool surfaces.
 

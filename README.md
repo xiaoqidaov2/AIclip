@@ -10,13 +10,11 @@ AiClip 是一个基于大模型的命令行视频剪辑助手。它把字幕转�
 - 视频截取、删除片段、拼接、缩放、裁切
 - 文件读取、编辑、写入、搜索、目录浏览
 - 通过 `bash_command` 执行临时命令
-- 使用 `/coordinate` 进入协同器模式，处理更复杂的多阶段任务
 
 ## 项目结构
 
 - `main.py`：程序入口
 - `src/cli/`：命令行交互、状态和渲染
-- `src/coordinator/`：任务协同、Worker 管理、通知和校验
 - `src/llm/`：模型配置和工具注册
 - `resources/docs/`：每个工具的说明文档
 
@@ -85,8 +83,6 @@ python main.py --skill project_core
 - `/verbose`：切换详细输出
 - `/status`：查看当前状态
 - `/skills`：查看可用技能
-- `/coordinate <任务描述>`：使用协同器执行复杂任务
-- `/workers`：查看当前 Worker 状态
 
 ## 默认工具
 
@@ -122,10 +118,6 @@ python main.py --skill project_core
 
 ```text
 先生成字幕，再把字幕烧录到视频中
-```
-
-```text
-/coordinate 帮我分析当前目录下的视频，生成字幕并输出一个可发布版本
 ```
 
 ## 说明

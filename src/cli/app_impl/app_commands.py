@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
@@ -104,19 +104,13 @@ class CLIAppCommandsMixin:
             show_detailed_status(
                 verbose=self.renderer.verbose,
                 active_skill=self.session_state.active_skill or self._locked_skill,
+                locked_skill=self._locked_skill,
+                planner_enabled=bool(getattr(self.orchestrator, "enable_llm_plan", False)),
                 history_count=len(self.history),
                 last_file_path=getattr(self.session_state, "last_file_path", None),
                 last_tool_name=getattr(self.session_state, "last_tool_name", None),
             )
             self._print_session_state()
-        elif user_input.startswith("/coordinate "):
-            request = user_input[len("/coordinate ") :].strip()
-            if request:
-                self._run_coordinator(request)
-            else:
-                print("用法: /coordinate <任务描述>")
-        elif user_input == "/workers":
-            self._show_workers()
         else:
             return False
         return True

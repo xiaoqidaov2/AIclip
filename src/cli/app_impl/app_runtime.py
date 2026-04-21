@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Callable, List, Optional, Union
 
@@ -16,7 +16,6 @@ class CLIAppRuntimeMixin:
         agent_factory: Callable[[Optional[str]], Any],
         tool_setup: Any,
         llm_config: Any,
-        coordinator_factory: Optional[Callable[[Any, Optional[str]], Any]] = None,
         initial_skill: Optional[str] = None,
         enable_llm_plan: bool = False,
     ) -> None:
@@ -29,9 +28,7 @@ class CLIAppRuntimeMixin:
             llm_config=llm_config,
             enable_llm_plan=enable_llm_plan,
         )
-        self.coordinator_factory = coordinator_factory
         self.agent = None
-        self.coordinator = None
         self.renderer = CLIRenderer()
         self.theme = self.renderer.theme
         self.session_state = SessionState()
@@ -46,7 +43,20 @@ class CLIAppRuntimeMixin:
         self._llm_log = self._build_llm_logger()
         self.skill_router._logger = self._llm_log
         self.orchestrator._logger = self._llm_log
-        self._refresh_runtime()
+
+    def _ensure_runtime(self, skill_name: Optional[str] = None) -> None:
+        resolved_skill = (
+            skill_name
+            or self._active_skill
+            or self.session_state.active_skill
+            or self.tool_setup.get_skill().name
+        )
+        needs_refresh = (
+            self.agent is None
+            or resolved_skill != self._active_skill
+        )
+        if needs_refresh:
+            self._refresh_runtime(resolved_skill)
 
     def _build_llm_logger(self) -> Any:
         def _logger(stage: str, message: str) -> None:
@@ -116,7 +126,7 @@ class CLIAppRuntimeMixin:
             or self.tool_setup.get_skill().name
         )
         self._active_skill = resolved_skill
-        if self.session_state.active_skill is None:
+        if skill_name is not None or self.session_state.active_skill is None:
             self.session_state.active_skill = resolved_skill
         tools = self.tool_setup.get_skill_tools(resolved_skill)
         tool_names = [getattr(tool, "__name__", type(tool).__name__) for tool in tools]
@@ -127,10 +137,3 @@ class CLIAppRuntimeMixin:
         )
         self.agent = self.agent_factory(resolved_skill)
         print(self.theme.success(f"[agent] ready for skill={resolved_skill}"))
-        self.coordinator = (
-            self.coordinator_factory(self.agent, resolved_skill)
-            if self.coordinator_factory
-            else None
-        )
-        if self.coordinator_factory:
-            print(self.theme.success(f"[coordinator] ready for skill={resolved_skill}"))
