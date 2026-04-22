@@ -5,7 +5,7 @@
     ("/clear", "Clear conversation history"),
     ("/verbose", "Toggle verbose output"),
     ("/status", "Show current session state"),
-    ("/plan", "Switch to the planning skill"),
+    ("/plan", "Enable LLM planning mode"),
 ]
 
 SKILL_COMMANDS: list[tuple[str, str]] = [

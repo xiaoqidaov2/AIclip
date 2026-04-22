@@ -91,15 +91,13 @@ class CLIAppCommandsMixin:
             self.session_state.clear()
             self._locked_skill = None
             self._active_skill = None
-            self._refresh_runtime()
+            self.orchestrator.enable_llm_plan = False
             clear_history()
         elif user_input == "/verbose":
             self.renderer.set_verbose(toggle_verbose(self.renderer.verbose))
         elif user_input == "/plan":
-            planner_skill = self.tool_setup.get_planner_skill_name()
-            self._set_skill(planner_skill)
             self.orchestrator.enable_llm_plan = True
-            print(self.theme.info(f"Plan skill activated: {planner_skill}"))
+            print(self.theme.info("LLM planning mode enabled"))
         elif user_input == "/status":
             show_detailed_status(
                 verbose=self.renderer.verbose,

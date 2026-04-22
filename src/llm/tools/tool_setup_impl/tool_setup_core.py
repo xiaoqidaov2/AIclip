@@ -21,7 +21,7 @@ class ToolSetup:
         self._specs: List[ToolSpec] = build_tool_specs()
         self._skills: Dict[str, SkillSpec] = build_skill_specs(self._specs)
         self._default_skill_name = "project_core"
-        self._planner_skill_name = "workflow_orchestrator"
+        self._planner_skill_name = self._default_skill_name
         self._skills, self._default_skill_name = load_skill_overrides(self._skills_dir, self._skills, self._default_skill_name)
         for spec in self._specs:
             self.registry.register_tool_doc(spec.name, load_doc(self._docs_dir, spec.doc_file))

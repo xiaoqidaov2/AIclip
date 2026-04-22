@@ -24,11 +24,6 @@ class FakeToolSetup:
                 title="Project Core",
                 description="default skill",
             ),
-            "workflow_orchestrator": FakeSkill(
-                name="workflow_orchestrator",
-                title="Workflow Orchestrator",
-                description="planner skill",
-            ),
         }
 
     def get_skill(self, name: str | None = None) -> FakeSkill:
@@ -39,10 +34,6 @@ class FakeToolSetup:
 
     def get_skill_tools(self, skill_name: str | None = None) -> list[object]:
         return []
-
-    def get_planner_skill_name(self) -> str:
-        return "workflow_orchestrator"
-
 
 class FakeLLMConfig:
     def create_llm(self) -> object:
@@ -101,7 +92,8 @@ def test_skills_does_not_initialize_runtime(capsys) -> None:
 
     captured = capsys.readouterr().out
     assert "project_core" in captured
-    assert "workflow_orchestrator" in captured
+    assert "full" not in captured
+    assert "workflow_orchestrator" not in captured
     assert "[skill] loading" not in captured
     assert agent_calls == []
 
@@ -113,8 +105,8 @@ def test_plan_initializes_planner_skill_on_demand(capsys) -> None:
     app.run_once("/plan")
 
     captured = capsys.readouterr().out
-    assert "Plan skill activated: workflow_orchestrator" in captured
-    assert agent_calls == ["workflow_orchestrator"]
+    assert "LLM planning mode enabled" in captured
+    assert agent_calls == []
 
 
 def test_status_shows_routing_and_planner_mode(capsys) -> None:
@@ -127,9 +119,29 @@ def test_status_shows_routing_and_planner_mode(capsys) -> None:
     app.run_once("/status")
 
     captured = capsys.readouterr().out
-    assert "Active skill: workflow_orchestrator" in captured
-    assert "Routing mode: locked (workflow_orchestrator)" in captured
+    assert "Active skill: project_core" in captured
+    assert "Routing mode: auto" in captured
     assert "Planner mode: llm" in captured
+
+
+def test_clear_does_not_initialize_runtime_and_resets_planner_mode(capsys) -> None:
+    agent_calls: list[str] = []
+    app = build_app(agent_calls)
+
+    app.run_once("/plan")
+    capsys.readouterr()
+
+    app.run_once("/clear")
+    cleared = capsys.readouterr().out
+
+    app.run_once("/status")
+    status = capsys.readouterr().out
+
+    assert "[skill] loading" not in cleared
+    assert agent_calls == []
+    assert "Conversation history cleared." in cleared
+    assert "Routing mode: auto" in status
+    assert "Planner mode: heuristic" in status
 
 
 def test_main_reuses_cli_app_across_multiple_run_calls(monkeypatch) -> None:

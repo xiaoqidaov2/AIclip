@@ -82,7 +82,10 @@ python main.py --skill project_core
 - `/clear`：清空对话历史
 - `/verbose`：切换详细输出
 - `/status`：查看当前状态
+- `/plan`：开启 LLM 规划模式
 - `/skills`：查看可用技能
+- `/skill <name>`：切换并锁定技能
+- `/auto_skill`：恢复自动技能路由
 
 ## 默认工具
 
