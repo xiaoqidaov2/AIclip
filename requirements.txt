@@ -1,4 +1,5 @@
 langchain
+langchain-openai
 python-dotenv
 faster-whisper
 moviepy
@@ -7,3 +8,5 @@ opencv-python
 requests
 dashscope
 opencc-python-reimplemented
+pytest
+flake8

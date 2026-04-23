@@ -11,20 +11,29 @@ Inputs:
 - `save_to`      — destination directory path; defaults to "tmp/" (optional)
 - `filename`     — override the saved filename; inferred from URL if omitted (optional)
 - `attribution`  — attribution text from the search result (optional, stored in return value)
+- `project_path` — path to an existing project.json (optional). When provided, the tool
+                   resolves the download destination relative to the project workspace and
+                   returns a workspace-relative path in `state.project_asset_path`.
+                   Pass this value as `asset_path` to add_project_asset so the asset path
+                   is stored as a project-relative path (e.g. "media/clip.mp4") rather
+                   than an absolute filesystem path.
 
 Returns (on success):
 - `ok`: true
 - `local_path`: absolute path of the saved file
 - `filename`: final filename on disk
 - `attribution`: attribution text (pass this to add_project_asset metadata)
+- `state.project_asset_path`: workspace-relative path (only present when `project_path` was given)
 
 Returns (on error):
 - `ok`: false
 - `error`: human-readable reason (e.g. network timeout, disk full)
 
 Workflow after download:
-1. Use `local_path` as the `asset_path` when calling add_project_asset.
-2. Include `attribution` in the asset metadata, e.g.:
+1. If `project_path` was given, use `state.project_asset_path` as the `asset_path` when
+   calling add_project_asset (workspace-relative, e.g. "media/clip.mp4").
+2. Otherwise use `local_path` as the `asset_path` (absolute path).
+3. Include `attribution` in the asset metadata, e.g.:
      { "attribution": "<attribution text>", "source": "pexels" }
 
 Notes:

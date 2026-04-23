@@ -1,0 +1,72 @@
+﻿{
+  "default_skill": "project_core",
+  "skills": [
+    {
+      "name": "project_core",
+      "title": "Project Core Skill",
+      "description": "Core project editing tools for loading, updating, validating, and rendering projects.",
+      "tool_names": [
+        "create_project_from_media",
+        "transcribe_audio",
+        "remove_project_silence",
+        "load_project",
+        "get_project_summary",
+        "search_project_subtitles",
+        "list_project_clips",
+        "save_project",
+        "set_project_metadata",
+        "trim_project_clip",
+        "set_project_clip_speed",
+        "add_project_asset",
+        "add_project_clip",
+        "add_project_subtitle",
+        "update_project_subtitle",
+        "batch_update_project_subtitles",
+        "add_project_subtitle_span",
+        "update_project_subtitle_span",
+        "remove_project_subtitle_span",
+        "remove_project_subtitle",
+        "prepare_project_render",
+        "add_project_audio_stem",
+        "update_project_audio_stem",
+        "remove_project_audio_stem",
+        "set_project_export_preset",
+        "plan_project_export",
+        "render_project",
+        "add_project_effect",
+        "update_project_effect",
+        "remove_project_effect",
+        "set_project_subtitle_effect",
+        "remove_project_subtitle_effect",
+        "add_project_comment",
+        "update_project_comment",
+        "remove_project_comment",
+        "lock_project_comment",
+        "detect_faces"
+      ],
+      "doc_names": ["project_core_contract"],
+      "keywords": ["project", "subtitle", "captions", "caption", "subtitle repair", "subtitle style", "subtitle position", "subtitle effect", "subtitle highlight", "trim", "clip", "render", "export", "load", "save", "metadata", "transcribe", "silence", "timeline", "字幕", "字幕错别字", "修复字幕", "字幕位置", "字幕样式", "字幕高亮", "改字幕", "改错别字", "关键词高亮", "人脸下方", "屏幕中央"]
+    },
+    {
+      "name": "asset_discovery",
+      "title": "Asset Discovery Skill",
+      "description": "Search and download stock assets for use in a project.",
+      "tool_names": ["search_net_asset", "download_net_asset"],
+      "keywords": ["search", "download", "asset", "stock", "pexels", "pixabay", "freesound"]
+    },
+    {
+      "name": "vision_inspection",
+      "title": "Vision Inspection Skill",
+      "description": "Inspect image or video content, summarize what is visible, and extract structured observations before editing.",
+      "tool_names": ["vision_analyze_media"],
+      "keywords": ["vision", "inspect", "analyze", "analyse", "analysis", "image", "video", "media", "ocr", "frame", "scene", "summary", "visual", "recognize", "recognise", "分析", "智能分析", "识别", "观察", "内容分析", "画面", "视频分析", "图片分析"]
+    },
+    {
+      "name": "capcut_finalization",
+      "title": "CapCut Finalization Skill",
+      "description": "Handle post-render CapCut work only: effects, stickers, draft packaging, and CapCut-specific finishing after a rendered video exists.",
+      "tool_names": ["capcut_video_creation"],
+      "keywords": ["capcut", "draft", "sticker", "stickers", "effect", "effects", "post-render", "finalize", "finalise", "finishing", "packaging", "剪映", "草稿", "特效", "贴图", "贴纸", "后期", "封装"]
+    }
+  ]
+}
