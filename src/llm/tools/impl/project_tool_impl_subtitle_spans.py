@@ -72,7 +72,9 @@ class ProjectToolSubtitleSpansMixin:
         line_height = (sample_bbox[3] - sample_bbox[1]) + 6
         total_h = line_height * len(wrapped_lines)
         if total_h > image.height or total_h < image.height // 2:
-            resize_layers((width, max(total_h + font_size // 2, font_size * 2)))
+            image, draw, bg_draw, text_draw = resize_layers(
+                (width, max(total_h + font_size // 2, font_size * 2))
+            )
         if "background_box" in fx_map:
             self._draw_background_box(bg_draw, image.width, image.height, fx_map["background_box"])
         start_y = int(max(0, (image.height - total_h) // 2))

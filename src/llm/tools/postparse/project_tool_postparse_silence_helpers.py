@@ -8,13 +8,23 @@ class ProjectToolPostParseSilenceHelpersMixin:
         raise AttributeError(name)
 
     def _speech_intervals_from_subtitles(self, project: Project, source_duration: float, padding: float) -> list[tuple[float, float]]:
-        return self._merge_intervals([
-            (
-                max(0.0, min(float(cue.start - padding), source_duration)),
-                max(max(0.0, min(float(cue.end + padding), source_duration)), max(0.0, min(float(cue.start), source_duration))),
+        intervals: list[tuple[float, float]] = []
+        effective_padding = max(0.0, float(padding))
+        min_gap = max(0.06, effective_padding * 0.5)
+        for cue in sorted(project.subtitles, key=lambda item: (item.start, item.end)):
+            start = max(0.0, min(float(cue.start) - effective_padding, source_duration))
+            end = max(
+                start,
+                min(float(cue.end) + effective_padding, source_duration),
             )
-            for cue in sorted(project.subtitles, key=lambda item: (item.start, item.end))
-        ])
+            if end <= start:
+                continue
+            if intervals and start - intervals[-1][1] < min_gap:
+                prev_start, prev_end = intervals[-1]
+                intervals[-1] = (prev_start, max(prev_end, end))
+            else:
+                intervals.append((start, end))
+        return self._merge_intervals(intervals)
 
     def _rebuild_tracks_for_silence(self, project: Project, rebuild_tracks: list[Track], speech_intervals: list[tuple[float, float]]) -> tuple[dict[str, list[Clip]], float]:
         new_clips_by_track: dict[str, list[Clip]] = {}

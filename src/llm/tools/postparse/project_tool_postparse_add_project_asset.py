@@ -22,11 +22,34 @@ class ProjectToolPostParseAddProjectAssetMixin:
 
             return failure
 
+        normalized_asset_path = asset_path
+
+        asset_source = "local" if Path(asset_path).is_absolute() else "net_asset"
+
+        if Path(asset_path).is_absolute():
+
+            try:
+
+                normalized_asset_path = self.store.import_asset_to_project(
+                    asset_path,
+                    project_path,
+                    preferred_name=Path(asset_path).name,
+                )
+
+            except Exception as exc:
+
+                return self._failure(
+                    "add_project_asset",
+                    f"Failed to import asset into project workspace: {exc}",
+                    code="asset.import_failed",
+                    path=str(Path(project_path).resolve().parent / "media"),
+                )
+
         command = AddAssetCommand(
             Asset(
                 id=asset_id,
-                path=asset_path,
-                source="local" if Path(asset_path).is_absolute() else "net_asset",
+                path=normalized_asset_path,
+                source=asset_source,
                 media_type=media_type,
             )
         )
@@ -51,6 +74,11 @@ class ProjectToolPostParseAddProjectAssetMixin:
                 summary=result.message,
                 error=result.message,
             ).to_dict()
+
+        asset = project.find_asset(asset_id)
+        if asset is not None:
+            asset.path = normalized_asset_path
+            asset.source = asset_source
 
         saved_path = self.store.save(project, output_path or project_path)
 

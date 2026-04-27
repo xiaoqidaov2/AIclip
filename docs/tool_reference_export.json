@@ -1,0 +1,2428 @@
+{
+  "generated_at": "2026-04-23T15:01:00+08:00",
+  "source": "src/llm/tools/tool_setup_impl/tool_setup_catalog_tools.py",
+  "tool_count": 44,
+  "registered_tool_count": 43,
+  "doc_only_count": 1,
+  "tools": [
+    {
+      "name": "project_core_contract",
+      "title": "Project Core Contract",
+      "description": "Structured guidance for reading tool outputs and staying inside the project core.",
+      "source": "project",
+      "doc_file": "project_core_contract.txt",
+      "registered": false,
+      "category": "doc_only",
+      "doc": "Project Core Contract\n\nPurpose\n- Keep agent behavior inside the project file model.\n- Use tool output, not chat text, to decide the next step.\n\nDecision order\n1. Read `decision`.\n2. Check `validation` and `render_state`.\n3. Use `state` and `next_actions`.\n4. Inspect `payload` only when you need the full project snapshot.\n\nOutput rules\n- `message` and `summary` are display text only.\n- Prefer `code`, `status`, `state`, `render_state`, `validation`, and `next_actions`.\n- If `next_actions` contains a concrete follow-up inside the active skill, continue instead of ending the task early.\n- If `decision.render_state.ready` is false, do not render.\n- If `decision.render_state.ready` is true and the request is to finish or optimize a video, continue through render preparation and final render when possible.\n- If the request needs subtitles and no subtitle source exists, use `transcribe_audio` first.\n- If the request is to cut silence, use `remove_project_silence` after subtitle cues exist.\n- If the request is about better short-video effect, hook strength, Douyin pacing, or stronger retention, inspect `payload.short_video` from `get_project_summary`.\n\nProject scope\n- The current core edits timeline, assets, subtitles, audio stems, effects, comments, metadata, and export presets.\n- Subtitle spans can be edited separately for local color and style changes.\n- Media bootstrap creates a project from raw media; it does not magically create a subtitle transcript.",
+      "doc_sections": {
+        "Purpose": "- Keep agent behavior inside the project file model.\n- Use tool output, not chat text, to decide the next step.\n\nDecision order\n1. Read `decision`.\n2. Check `validation` and `render_state`.\n3. Use `state` and `next_actions`.\n4. Inspect `payload` only when you need the full project snapshot.\n\nOutput rules\n- `message` and `summary` are display text only.\n- Prefer `code`, `status`, `state`, `render_state`, `validation`, and `next_actions`.\n- If `next_actions` contains a concrete follow-up inside the active skill, continue instead of ending the task early.\n- If `decision.render_state.ready` is false, do not render.\n- If `decision.render_state.ready` is true and the request is to finish or optimize a video, continue through render preparation and final render when possible.\n- If the request needs subtitles and no subtitle source exists, use `transcribe_audio` first.\n- If the request is to cut silence, use `remove_project_silence` after subtitle cues exist.\n- If the request is about better short-video effect, hook strength, Douyin pacing, or stronger retention, inspect `payload.short_video` from `get_project_summary`.\n\nProject scope\n- The current core edits timeline, assets, subtitles, audio stems, effects, comments, metadata, and export presets.\n- Subtitle spans can be edited separately for local color and style changes.\n- Media bootstrap creates a project from raw media; it does not magically create a subtitle transcript.",
+        "title": "Project Core Contract"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Keep agent behavior inside the project file model.",
+          "Use tool output, not chat text, to decide the next step.",
+          "Decision order",
+          "1. Read `decision`.",
+          "2. Check `validation` and `render_state`.",
+          "3. Use `state` and `next_actions`.",
+          "4. Inspect `payload` only when you need the full project snapshot.",
+          "Output rules",
+          "`message` and `summary` are display text only.",
+          "Prefer `code`, `status`, `state`, `render_state`, `validation`, and `next_actions`.",
+          "If `next_actions` contains a concrete follow-up inside the active skill, continue instead of ending the task early.",
+          "If `decision.render_state.ready` is false, do not render.",
+          "If `decision.render_state.ready` is true and the request is to finish or optimize a video, continue through render preparation and final render when possible.",
+          "If the request needs subtitles and no subtitle source exists, use `transcribe_audio` first.",
+          "If the request is to cut silence, use `remove_project_silence` after subtitle cues exist.",
+          "If the request is about better short-video effect, hook strength, Douyin pacing, or stronger retention, inspect `payload.short_video` from `get_project_summary`.",
+          "Project scope",
+          "The current core edits timeline, assets, subtitles, audio stems, effects, comments, metadata, and export presets.",
+          "Subtitle spans can be edited separately for local color and style changes.",
+          "Media bootstrap creates a project from raw media; it does not magically create a subtitle transcript."
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "只提供约束说明，不会被注册为可调用工具。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": []
+    },
+    {
+      "name": "create_project_from_media",
+      "title": "Project Bootstrap Tool",
+      "description": "Create a project file directly from a raw video or audio source.",
+      "source": "project",
+      "doc_file": "create_project_from_media.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "create_project_from_media\n\nPurpose\n- Bootstrap a project from a raw video or audio file.\n\nInputs\n- `media_path`: source media file.\n- `project_path`: optional output project path.\n- `project_name`: optional name.\n- `project_id`: optional id.\n- `asset_id`: optional asset id.\n- `track_id`: optional initial track id.\n- `clip_id`: optional initial clip id.\n\nReturns\n- `decision`\n- `payload`\n- `render_state`\n- `state` with `project_path`, `media_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`\n\nNotes\n- This tool creates the project shell only.\n- It does not generate subtitles or a transcript.\n- If the request depends on subtitles and none exist yet, keep the result at project scope and report that gap with `decision`.\n- If the source video has audio, the project should include both video and audio timeline tracks.",
+      "doc_sections": {
+        "Purpose": "- Bootstrap a project from a raw video or audio file.",
+        "Inputs": "- `media_path`: source media file.\n- `project_path`: optional output project path.\n- `project_name`: optional name.\n- `project_id`: optional id.\n- `asset_id`: optional asset id.\n- `track_id`: optional initial track id.\n- `clip_id`: optional initial clip id.",
+        "Returns": "- `decision`\n- `payload`\n- `render_state`\n- `state` with `project_path`, `media_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`",
+        "Notes": "- This tool creates the project shell only.\n- It does not generate subtitles or a transcript.\n- If the request depends on subtitles and none exist yet, keep the result at project scope and report that gap with `decision`.\n- If the source video has audio, the project should include both video and audio timeline tracks.",
+        "title": "create_project_from_media"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Bootstrap a project from a raw video or audio file."
+        ],
+        "inputs": [
+          "`media_path`: source media file.",
+          "`project_path`: optional output project path.",
+          "`project_name`: optional name.",
+          "`project_id`: optional id.",
+          "`asset_id`: optional asset id.",
+          "`track_id`: optional initial track id.",
+          "`clip_id`: optional initial clip id."
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`render_state`",
+          "`state` with `project_path`, `media_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`"
+        ],
+        "notes": [
+          "This tool creates the project shell only.",
+          "It does not generate subtitles or a transcript.",
+          "If the request depends on subtitles and none exist yet, keep the result at project scope and report that gap with `decision`.",
+          "If the source video has audio, the project should include both video and audio timeline tracks."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "创建项目工作区与项目壳文件。",
+        "必要时会把源媒体导入受管工作区。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。",
+        "该工具只建立项目壳，不会自动转写字幕。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "transcribe_audio",
+      "title": "Project Subtitle Transcription Tool",
+      "description": "Generate subtitle cues from source audio and store them in the project.",
+      "source": "project",
+      "doc_file": "transcribe_audio.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "transcribe_audio\n\nPurpose\n- Convert source audio into subtitle cues stored in the project.\n\nInputs\n- `project_path`\n- `language`: optional language code\n- `audio_path`: optional override source path\n- `model_size`: optional Whisper model size, default `tiny`\n- `output_path`: optional project save path\n- `replace_existing`: optional, default `true`\n\nReturns\n- `decision`\n- `payload`\n- `render_state`\n- `state` with `subtitle_source_present` and `subtitle_count`\n\nNotes\n- Use this when the project has no subtitle source yet.\n- This is the core fallback for subtitle-driven edits.",
+      "doc_sections": {
+        "Purpose": "- Convert source audio into subtitle cues stored in the project.",
+        "Inputs": "- `project_path`\n- `language`: optional language code\n- `audio_path`: optional override source path\n- `model_size`: optional Whisper model size, default `tiny`\n- `output_path`: optional project save path\n- `replace_existing`: optional, default `true`",
+        "Returns": "- `decision`\n- `payload`\n- `render_state`\n- `state` with `subtitle_source_present` and `subtitle_count`",
+        "Notes": "- Use this when the project has no subtitle source yet.\n- This is the core fallback for subtitle-driven edits.",
+        "title": "transcribe_audio"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Convert source audio into subtitle cues stored in the project."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`language`: optional language code",
+          "`audio_path`: optional override source path",
+          "`model_size`: optional Whisper model size, default `tiny`",
+          "`output_path`: optional project save path",
+          "`replace_existing`: optional, default `true`"
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`render_state`",
+          "`state` with `subtitle_source_present` and `subtitle_count`"
+        ],
+        "notes": [
+          "Use this when the project has no subtitle source yet.",
+          "This is the core fallback for subtitle-driven edits."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_silence",
+      "title": "Project Silence Removal Tool",
+      "description": "Rebuild the timeline by removing gaps between subtitle cues.",
+      "source": "project",
+      "doc_file": "remove_project_silence.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_silence\n\nPurpose\n- Remove gaps between subtitle cues and rebuild the main timeline track.\n\nInputs\n- `project_path`\n- `track_id`: optional\n- `output_path`: optional\n- `padding`: optional seconds added around each cue\n\nReturns\n- `decision`\n- `payload`\n- `render_state`\n- `state` with `segment_count`, `timeline_duration`, `subtitle_count`\n\nNotes\n- Requires subtitle cues.\n- Use after transcription when the goal is to cut silent sections.",
+      "doc_sections": {
+        "Purpose": "- Remove gaps between subtitle cues and rebuild the main timeline track.",
+        "Inputs": "- `project_path`\n- `track_id`: optional\n- `output_path`: optional\n- `padding`: optional seconds added around each cue",
+        "Returns": "- `decision`\n- `payload`\n- `render_state`\n- `state` with `segment_count`, `timeline_duration`, `subtitle_count`",
+        "Notes": "- Requires subtitle cues.\n- Use after transcription when the goal is to cut silent sections.",
+        "title": "remove_project_silence"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove gaps between subtitle cues and rebuild the main timeline track."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`track_id`: optional",
+          "`output_path`: optional",
+          "`padding`: optional seconds added around each cue"
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`render_state`",
+          "`state` with `segment_count`, `timeline_duration`, `subtitle_count`"
+        ],
+        "notes": [
+          "Requires subtitle cues.",
+          "Use after transcription when the goal is to cut silent sections."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "load_project",
+      "title": "Project Loader Tool",
+      "description": "Load a JSON or XML editing project.",
+      "source": "project",
+      "doc_file": "load_project.txt",
+      "registered": true,
+      "category": "read_or_analyze",
+      "doc": "load_project\n\nPurpose\n- Load a project from JSON or XML.\n\nInputs\n- `project_path`: path to `project.json` or `project.xml`.\n\nReturns\n- `decision`\n- `payload`\n- `validation`\n- `render_state`\n- `state` with `project_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`, `audio_stem_count`, `effect_count`, `comment_count`\n\nNotes\n- Use this before any edit that depends on the existing project structure.\n- Inspect `subtitle_source_present` and `subtitle_count` before trying subtitle edits.\n- If `subtitle_source_present` is false, call `transcribe_audio` instead of asking for a subtitle file.\n- If `audio_track_present` is false on a video project, rebuild the project from media.",
+      "doc_sections": {
+        "Purpose": "- Load a project from JSON or XML.",
+        "Inputs": "- `project_path`: path to `project.json` or `project.xml`.",
+        "Returns": "- `decision`\n- `payload`\n- `validation`\n- `render_state`\n- `state` with `project_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`, `audio_stem_count`, `effect_count`, `comment_count`",
+        "Notes": "- Use this before any edit that depends on the existing project structure.\n- Inspect `subtitle_source_present` and `subtitle_count` before trying subtitle edits.\n- If `subtitle_source_present` is false, call `transcribe_audio` instead of asking for a subtitle file.\n- If `audio_track_present` is false on a video project, rebuild the project from media.",
+        "title": "load_project"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Load a project from JSON or XML."
+        ],
+        "inputs": [
+          "`project_path`: path to `project.json` or `project.xml`."
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`validation`",
+          "`render_state`",
+          "`state` with `project_path`, `subtitle_source_present`, `audio_track_present`, `asset_count`, `track_count`, `subtitle_count`, `audio_stem_count`, `effect_count`, `comment_count`"
+        ],
+        "notes": [
+          "Use this before any edit that depends on the existing project structure.",
+          "Inspect `subtitle_source_present` and `subtitle_count` before trying subtitle edits.",
+          "If `subtitle_source_present` is false, call `transcribe_audio` instead of asking for a subtitle file.",
+          "If `audio_track_present` is false on a video project, rebuild the project from media."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取、搜索或分析现有项目/媒体状态。",
+        "正常情况下不会改写项目文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "get_project_summary",
+      "title": "Project Summary Tool",
+      "description": "Return a compact summary of project structure, timeline, and media counts.",
+      "source": "project",
+      "doc_file": "get_project_summary.txt",
+      "registered": true,
+      "category": "read_or_analyze",
+      "doc": "get_project_summary\n\nPurpose\n- Return a compact summary of the project without dumping the full project payload.\n\nInputs\n- `project_path`\n\nReturns\n- `decision`\n- `validation`\n- `render_state`\n- `payload` with timeline duration, fps, tracks, source media path, entity counts, and `short_video` editing signals\n\nNotes\n- Use this when you need a quick project overview before deciding which edit tool to call.\n- For short-video optimization, inspect `payload.short_video` before large pacing or subtitle changes.",
+      "doc_sections": {
+        "Purpose": "- Return a compact summary of the project without dumping the full project payload.",
+        "Inputs": "- `project_path`",
+        "Returns": "- `decision`\n- `validation`\n- `render_state`\n- `payload` with timeline duration, fps, tracks, source media path, entity counts, and `short_video` editing signals",
+        "Notes": "- Use this when you need a quick project overview before deciding which edit tool to call.\n- For short-video optimization, inspect `payload.short_video` before large pacing or subtitle changes.",
+        "title": "get_project_summary"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Return a compact summary of the project without dumping the full project payload."
+        ],
+        "inputs": [
+          "`project_path`"
+        ],
+        "returns": [
+          "`decision`",
+          "`validation`",
+          "`render_state`",
+          "`payload` with timeline duration, fps, tracks, source media path, entity counts, and `short_video` editing signals"
+        ],
+        "notes": [
+          "Use this when you need a quick project overview before deciding which edit tool to call.",
+          "For short-video optimization, inspect `payload.short_video` before large pacing or subtitle changes."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取、搜索或分析现有项目/媒体状态。",
+        "正常情况下不会改写项目文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "search_project_subtitles",
+      "title": "Project Subtitle Search Tool",
+      "description": "Search subtitle cues by text, speaker, or language without loading the full project payload.",
+      "source": "project",
+      "doc_file": "search_project_subtitles.txt",
+      "registered": true,
+      "category": "read_or_analyze",
+      "doc": "search_project_subtitles\n\nPurpose\n- Search subtitle cues by text, speaker, or language.\n\nInputs\n- `project_path`\n- `query`: optional substring match, case-insensitive\n- `speaker`: optional exact speaker filter\n- `language`: optional exact language filter\n- `limit`: optional, default `50`\n\nReturns\n- `decision`\n- `validation`\n- `render_state`\n- `payload.matches`\n\nNotes\n- Use this instead of `load_project` when you need to find subtitles such as all cues containing a word or phrase.",
+      "doc_sections": {
+        "Purpose": "- Search subtitle cues by text, speaker, or language.",
+        "Inputs": "- `project_path`\n- `query`: optional substring match, case-insensitive\n- `speaker`: optional exact speaker filter\n- `language`: optional exact language filter\n- `limit`: optional, default `50`",
+        "Returns": "- `decision`\n- `validation`\n- `render_state`\n- `payload.matches`",
+        "Notes": "- Use this instead of `load_project` when you need to find subtitles such as all cues containing a word or phrase.",
+        "title": "search_project_subtitles"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Search subtitle cues by text, speaker, or language."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`query`: optional substring match, case-insensitive",
+          "`speaker`: optional exact speaker filter",
+          "`language`: optional exact language filter",
+          "`limit`: optional, default `50`"
+        ],
+        "returns": [
+          "`decision`",
+          "`validation`",
+          "`render_state`",
+          "`payload.matches`"
+        ],
+        "notes": [
+          "Use this instead of `load_project` when you need to find subtitles such as all cues containing a word or phrase."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取、搜索或分析现有项目/媒体状态。",
+        "正常情况下不会改写项目文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "list_project_clips",
+      "title": "Project Clip List Tool",
+      "description": "List timeline clips with optional filters such as track, asset, and duration.",
+      "source": "project",
+      "doc_file": "list_project_clips.txt",
+      "registered": true,
+      "category": "read_or_analyze",
+      "doc": "list_project_clips\n\nPurpose\n- List timeline clips with optional filters.\n\nInputs\n- `project_path`\n- `track_id`: optional\n- `track_kind`: optional\n- `asset_id`: optional\n- `min_duration`: optional\n- `max_duration`: optional\n- `limit`: optional, default `100`\n\nReturns\n- `decision`\n- `validation`\n- `render_state`\n- `payload.clips`\n\nNotes\n- Use this to answer questions like “which clips are longer than 5 seconds” or “what is on the overlay track”.",
+      "doc_sections": {
+        "Purpose": "- List timeline clips with optional filters.",
+        "Inputs": "- `project_path`\n- `track_id`: optional\n- `track_kind`: optional\n- `asset_id`: optional\n- `min_duration`: optional\n- `max_duration`: optional\n- `limit`: optional, default `100`",
+        "Returns": "- `decision`\n- `validation`\n- `render_state`\n- `payload.clips`",
+        "Notes": "- Use this to answer questions like “which clips are longer than 5 seconds” or “what is on the overlay track”.",
+        "title": "list_project_clips"
+      },
+      "usage_summary": {
+        "purpose": [
+          "List timeline clips with optional filters."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`track_id`: optional",
+          "`track_kind`: optional",
+          "`asset_id`: optional",
+          "`min_duration`: optional",
+          "`max_duration`: optional",
+          "`limit`: optional, default `100`"
+        ],
+        "returns": [
+          "`decision`",
+          "`validation`",
+          "`render_state`",
+          "`payload.clips`"
+        ],
+        "notes": [
+          "Use this to answer questions like “which clips are longer than 5 seconds” or “what is on the overlay track”."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取、搜索或分析现有项目/媒体状态。",
+        "正常情况下不会改写项目文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "save_project",
+      "title": "Project Saver Tool",
+      "description": "Save a project back to JSON or XML.",
+      "source": "project",
+      "doc_file": "save_project.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "save_project\n\nPurpose\n- Persist the current project to JSON or XML.\n\nInputs\n- `project_path`: source project file.\n- `output_path`: optional target path.\n- `format`: optional `json` or `xml`.\n\nReturns\n- `decision`\n- `payload`\n- `validation`\n- `render_state`\n- `artifacts` with the saved project path",
+      "doc_sections": {
+        "Purpose": "- Persist the current project to JSON or XML.",
+        "Inputs": "- `project_path`: source project file.\n- `output_path`: optional target path.\n- `format`: optional `json` or `xml`.",
+        "Returns": "- `decision`\n- `payload`\n- `validation`\n- `render_state`\n- `artifacts` with the saved project path",
+        "title": "save_project"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Persist the current project to JSON or XML."
+        ],
+        "inputs": [
+          "`project_path`: source project file.",
+          "`output_path`: optional target path.",
+          "`format`: optional `json` or `xml`."
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`validation`",
+          "`render_state`",
+          "`artifacts` with the saved project path"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "set_project_metadata",
+      "title": "Project Metadata Tool",
+      "description": "Update project metadata in the unified project file.",
+      "source": "project",
+      "doc_file": "set_project_metadata.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "set_project_metadata\n\nUpdate project metadata in the project file.\n\nWhen to use:\n- Change project-level fields such as title, owner, notes, tags, or delivery metadata.\n\nInputs:\n- `project_path`\n- `metadata`: key/value map to merge\n- `output_path`: optional save path\n\nReturns:\n- updated project snapshot\n- `project_version`\n- `render_state`\n\nNotes:\n- This does not touch timeline clips.",
+      "doc_sections": {
+        "body": "Update project metadata in the project file.\n\nWhen to use:\n- Change project-level fields such as title, owner, notes, tags, or delivery metadata.\n\nInputs:\n- `project_path`\n- `metadata`: key/value map to merge\n- `output_path`: optional save path\n\nReturns:\n- updated project snapshot\n- `project_version`\n- `render_state`\n\nNotes:\n- This does not touch timeline clips.",
+        "title": "set_project_metadata"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update project metadata in the project file.\n\nWhen to use:\n- Change project-level fields such as title, owner, notes, tags, or delivery metadata.\n\nInputs:\n- `project_path`\n- `metadata`: key/value map to merge\n- `output_path`: optional save path\n\nReturns:\n- updated project snapshot\n- `project_version`\n- `render_state`\n\nNotes:\n- This does not touch timeline clips."
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "trim_project_clip",
+      "title": "Project Clip Trim Tool",
+      "description": "Trim a clip inside a project file and save the updated project.",
+      "source": "project",
+      "doc_file": "trim_project_clip.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "trim_project_clip\n\nPurpose\n- Trim a clip inside the project timeline.\n\nInputs\n- `project_path`\n- `clip_id`\n- `start`\n- `end`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`\n\nNotes\n- Check `validation` before moving to render.",
+      "doc_sections": {
+        "Purpose": "- Trim a clip inside the project timeline.",
+        "Inputs": "- `project_path`\n- `clip_id`\n- `start`\n- `end`\n- `track_id`: optional\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+        "Notes": "- Check `validation` before moving to render.",
+        "title": "trim_project_clip"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Trim a clip inside the project timeline."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`clip_id`",
+          "`start`",
+          "`end`",
+          "`track_id`: optional",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`"
+        ],
+        "notes": [
+          "Check `validation` before moving to render."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "时间区间、目标 clip 或 asset 不存在时，时间线更新会失败或产生不可渲染项目。"
+      ]
+    },
+    {
+      "name": "set_project_clip_speed",
+      "title": "Project Clip Speed Tool",
+      "description": "Update clip speed inside a project file.",
+      "source": "project",
+      "doc_file": "set_project_clip_speed.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "set_project_clip_speed\n\nUpdate clip speed inside a project file.\n\nWhen to use:\n- Change playback speed without changing the source file.\n\nInputs:\n- `project_path`\n- `clip_id`\n- `speed`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`\n- `project_version`",
+      "doc_sections": {
+        "body": "Update clip speed inside a project file.\n\nWhen to use:\n- Change playback speed without changing the source file.\n\nInputs:\n- `project_path`\n- `clip_id`\n- `speed`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`\n- `project_version`",
+        "title": "set_project_clip_speed"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update clip speed inside a project file.\n\nWhen to use:\n- Change playback speed without changing the source file.\n\nInputs:\n- `project_path`\n- `clip_id`\n- `speed`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`\n- `project_version`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "时间区间、目标 clip 或 asset 不存在时，时间线更新会失败或产生不可渲染项目。"
+      ]
+    },
+    {
+      "name": "set_project_clip_transform",
+      "title": "Project Clip Transform Tool",
+      "description": "Update clip position, scale, opacity, and transform data inside a project file.",
+      "source": "project",
+      "doc_file": "set_project_clip_transform.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "set_project_clip_transform\n\nPurpose\n- Update the visible placement and basic transform values of a clip in the timeline.\n\nInputs\n- `project_path`\n- `clip_id`\n- `x`: optional\n- `y`: optional\n- `scale`: optional\n- `opacity`: optional\n- `track_id`: optional\n- `transform`: optional object for additional keys\n- `output_path`: optional\n\nReturns\n- updated project snapshot\n- transform change details\n\nNotes\n- The current renderer actively applies `x`, `y`, `scale`, and `opacity`.\n- Extra transform keys can still be stored for future render upgrades.",
+      "doc_sections": {
+        "Purpose": "- Update the visible placement and basic transform values of a clip in the timeline.",
+        "Inputs": "- `project_path`\n- `clip_id`\n- `x`: optional\n- `y`: optional\n- `scale`: optional\n- `opacity`: optional\n- `track_id`: optional\n- `transform`: optional object for additional keys\n- `output_path`: optional",
+        "Returns": "- updated project snapshot\n- transform change details",
+        "Notes": "- The current renderer actively applies `x`, `y`, `scale`, and `opacity`.\n- Extra transform keys can still be stored for future render upgrades.",
+        "title": "set_project_clip_transform"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update the visible placement and basic transform values of a clip in the timeline."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`clip_id`",
+          "`x`: optional",
+          "`y`: optional",
+          "`scale`: optional",
+          "`opacity`: optional",
+          "`track_id`: optional",
+          "`transform`: optional object for additional keys",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "updated project snapshot",
+          "transform change details"
+        ],
+        "notes": [
+          "The current renderer actively applies `x`, `y`, `scale`, and `opacity`.",
+          "Extra transform keys can still be stored for future render upgrades."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "add_project_asset",
+      "title": "Project Asset Tool",
+      "description": "Add a media asset into a project file.",
+      "source": "project",
+      "doc_file": "add_project_asset.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_asset\n\nAdd a media asset into a project file.\n\nWhen to use:\n- Register a new source file in the project.\n\nInputs:\n- `project_path`\n- `asset_id`\n- `asset_path`\n- `media_type`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- asset count in `state`\n- `render_state`",
+      "doc_sections": {
+        "body": "Add a media asset into a project file.\n\nWhen to use:\n- Register a new source file in the project.\n\nInputs:\n- `project_path`\n- `asset_id`\n- `asset_path`\n- `media_type`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- asset count in `state`\n- `render_state`",
+        "title": "add_project_asset"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add a media asset into a project file.\n\nWhen to use:\n- Register a new source file in the project.\n\nInputs:\n- `project_path`\n- `asset_id`\n- `asset_path`\n- `media_type`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- asset count in `state`\n- `render_state`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "add_project_clip",
+      "title": "Project Clip Insert Tool",
+      "description": "Insert a clip that references an existing asset onto a timeline track at a specific time range.",
+      "source": "project",
+      "doc_file": "add_project_clip.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_clip\n\nPurpose\n- Insert a clip that references an existing project asset onto a timeline track.\n\nInputs\n- `project_path`\n- `clip_id`\n- `asset_id`\n- `start`\n- `end`\n- `track_id`\n- `source_in`: optional\n- `source_out`: optional\n- `speed`: optional\n- `track_kind`: optional, default `video`\n- `track_name`: optional\n- `transform`: optional, supports keys like `x`, `y`, `scale`, `opacity`\n- `insert_index`: optional\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`\n\nNotes\n- The referenced `asset_id` must already exist in the project.\n- Use this after `add_project_asset` to place downloaded or local media on the timeline.",
+      "doc_sections": {
+        "Purpose": "- Insert a clip that references an existing project asset onto a timeline track.",
+        "Inputs": "- `project_path`\n- `clip_id`\n- `asset_id`\n- `start`\n- `end`\n- `track_id`\n- `source_in`: optional\n- `source_out`: optional\n- `speed`: optional\n- `track_kind`: optional, default `video`\n- `track_name`: optional\n- `transform`: optional, supports keys like `x`, `y`, `scale`, `opacity`\n- `insert_index`: optional\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+        "Notes": "- The referenced `asset_id` must already exist in the project.\n- Use this after `add_project_asset` to place downloaded or local media on the timeline.",
+        "title": "add_project_clip"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Insert a clip that references an existing project asset onto a timeline track."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`clip_id`",
+          "`asset_id`",
+          "`start`",
+          "`end`",
+          "`track_id`",
+          "`source_in`: optional",
+          "`source_out`: optional",
+          "`speed`: optional",
+          "`track_kind`: optional, default `video`",
+          "`track_name`: optional",
+          "`transform`: optional, supports keys like `x`, `y`, `scale`, `opacity`",
+          "`insert_index`: optional",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`"
+        ],
+        "notes": [
+          "The referenced `asset_id` must already exist in the project.",
+          "Use this after `add_project_asset` to place downloaded or local media on the timeline."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "时间区间、目标 clip 或 asset 不存在时，时间线更新会失败或产生不可渲染项目。"
+      ]
+    },
+    {
+      "name": "generate_animejs_overlay_asset",
+      "title": "Anime.js Overlay Asset Tool",
+      "description": "Store Anime.js source and register a transparent overlay asset in the project.",
+      "source": "project",
+      "doc_file": "generate_animejs_overlay_asset.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "generate_animejs_overlay_asset\n\nPurpose\n- Store Anime.js source as a workspace bundle and register a transparent overlay asset in the project.\n\nInputs\n- `project_path`\n- `asset_id`\n- `code`\n- `width`\n- `height`\n- `duration`\n- `fps`\n- `label`: optional\n- `output_path`: optional\n\nReturns\n- updated project snapshot\n- generated asset metadata\n- bundle artifact paths for html, script, manifest, and preview image\n\nNotes\n- MVP registers a transparent PNG preview asset and stores the Anime.js bundle for later rendering.\n- Use `apply_overlay_to_screen` to place the generated overlay on the timeline.",
+      "doc_sections": {
+        "Purpose": "- Store Anime.js source as a workspace bundle and register a transparent overlay asset in the project.",
+        "Inputs": "- `project_path`\n- `asset_id`\n- `code`\n- `width`\n- `height`\n- `duration`\n- `fps`\n- `label`: optional\n- `output_path`: optional",
+        "Returns": "- updated project snapshot\n- generated asset metadata\n- bundle artifact paths for html, script, manifest, and preview image",
+        "Notes": "- MVP registers a transparent PNG preview asset and stores the Anime.js bundle for later rendering.\n- Use `apply_overlay_to_screen` to place the generated overlay on the timeline.",
+        "title": "generate_animejs_overlay_asset"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Store Anime.js source as a workspace bundle and register a transparent overlay asset in the project."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`asset_id`",
+          "`code`",
+          "`width`",
+          "`height`",
+          "`duration`",
+          "`fps`",
+          "`label`: optional",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "updated project snapshot",
+          "generated asset metadata",
+          "bundle artifact paths for html, script, manifest, and preview image"
+        ],
+        "notes": [
+          "MVP registers a transparent PNG preview asset and stores the Anime.js bundle for later rendering.",
+          "Use `apply_overlay_to_screen` to place the generated overlay on the timeline."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "apply_overlay_to_screen",
+      "title": "Overlay Screen Placement Tool",
+      "description": "Place a transparent overlay asset onto the timeline over a target clip.",
+      "source": "project",
+      "doc_file": "apply_overlay_to_screen.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "apply_overlay_to_screen\n\nPurpose\n- Add a transparent overlay asset back onto the screen area of a target clip.\n\nInputs\n- `project_path`\n- `asset_id`\n- `target_clip_id`\n- `overlay_clip_id`\n- `x`\n- `y`\n- `width`: optional\n- `height`: optional\n- `start`: optional\n- `end`: optional\n- `opacity`: optional\n- `track_id`: optional\n- `track_name`: optional\n- `output_path`: optional\n\nReturns\n- updated project snapshot\n- overlay clip insertion result\n\nNotes\n- The clip is written to a dedicated overlay track by default.\n- The clip transform stores the screen placement and opacity.",
+      "doc_sections": {
+        "Purpose": "- Add a transparent overlay asset back onto the screen area of a target clip.",
+        "Inputs": "- `project_path`\n- `asset_id`\n- `target_clip_id`\n- `overlay_clip_id`\n- `x`\n- `y`\n- `width`: optional\n- `height`: optional\n- `start`: optional\n- `end`: optional\n- `opacity`: optional\n- `track_id`: optional\n- `track_name`: optional\n- `output_path`: optional",
+        "Returns": "- updated project snapshot\n- overlay clip insertion result",
+        "Notes": "- The clip is written to a dedicated overlay track by default.\n- The clip transform stores the screen placement and opacity.",
+        "title": "apply_overlay_to_screen"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add a transparent overlay asset back onto the screen area of a target clip."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`asset_id`",
+          "`target_clip_id`",
+          "`overlay_clip_id`",
+          "`x`",
+          "`y`",
+          "`width`: optional",
+          "`height`: optional",
+          "`start`: optional",
+          "`end`: optional",
+          "`opacity`: optional",
+          "`track_id`: optional",
+          "`track_name`: optional",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "updated project snapshot",
+          "overlay clip insertion result"
+        ],
+        "notes": [
+          "The clip is written to a dedicated overlay track by default.",
+          "The clip transform stores the screen placement and opacity."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "时间区间、目标 clip 或 asset 不存在时，时间线更新会失败或产生不可渲染项目。"
+      ]
+    },
+    {
+      "name": "add_project_subtitle",
+      "title": "Project Subtitle Add Tool",
+      "description": "Add a subtitle cue into a project file, including spans, position, and margins.",
+      "source": "project",
+      "doc_file": "add_project_subtitle.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_subtitle\n\nPurpose\n- Add a subtitle cue to the project.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `start`\n- `end`\n- `text`\n- `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n- `track_id`: optional\n- `speaker`: optional\n- `language`: optional\n- `position`: optional `top`, `middle`, or `bottom`\n- `margin_top`: optional top edge margin in pixels\n- `margin_bottom`: optional bottom edge margin in pixels\n- `margin_left`: optional left edge margin in pixels\n- `margin_right`: optional right edge margin in pixels\n- `offset_y`: optional vertical pixel adjustment\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Add a subtitle cue to the project.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `start`\n- `end`\n- `text`\n- `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n- `track_id`: optional\n- `speaker`: optional\n- `language`: optional\n- `position`: optional `top`, `middle`, or `bottom`\n- `margin_top`: optional top edge margin in pixels\n- `margin_bottom`: optional bottom edge margin in pixels\n- `margin_left`: optional left edge margin in pixels\n- `margin_right`: optional right edge margin in pixels\n- `offset_y`: optional vertical pixel adjustment\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+        "title": "add_project_subtitle"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add a subtitle cue to the project."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`start`",
+          "`end`",
+          "`text`",
+          "`spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`",
+          "`track_id`: optional",
+          "`speaker`: optional",
+          "`language`: optional",
+          "`position`: optional `top`, `middle`, or `bottom`",
+          "`margin_top`: optional top edge margin in pixels",
+          "`margin_bottom`: optional bottom edge margin in pixels",
+          "`margin_left`: optional left edge margin in pixels",
+          "`margin_right`: optional right edge margin in pixels",
+          "`offset_y`: optional vertical pixel adjustment",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "字幕文本与 spans 内容不一致时，后续 prepare_project_render 或 render_project 可能校验失败。"
+      ]
+    },
+    {
+      "name": "update_project_subtitle",
+      "title": "Project Subtitle Update Tool",
+      "description": "Update a subtitle cue inside a project file, including spans, position, and margins.",
+      "source": "project",
+      "doc_file": "update_project_subtitle.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "update_project_subtitle\n\nPurpose\n- Update an existing subtitle cue.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `start`: optional\n- `end`: optional\n- `text`: optional\n- `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n- `speaker`: optional\n- `language`: optional\n- `position`: optional `top`, `middle`, `bottom`, or `below_faces` (to automatically avoid covering detected faces)\n- `margin_top`: optional top edge margin in pixels\n- `margin_bottom`: optional bottom edge margin in pixels\n- `margin_left`: optional left edge margin in pixels\n- `margin_right`: optional right edge margin in pixels\n- `offset_y`: optional vertical pixel adjustment\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Update an existing subtitle cue.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `start`: optional\n- `end`: optional\n- `text`: optional\n- `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n- `speaker`: optional\n- `language`: optional\n- `position`: optional `top`, `middle`, `bottom`, or `below_faces` (to automatically avoid covering detected faces)\n- `margin_top`: optional top edge margin in pixels\n- `margin_bottom`: optional bottom edge margin in pixels\n- `margin_left`: optional left edge margin in pixels\n- `margin_right`: optional right edge margin in pixels\n- `offset_y`: optional vertical pixel adjustment\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+        "title": "update_project_subtitle"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update an existing subtitle cue."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`start`: optional",
+          "`end`: optional",
+          "`text`: optional",
+          "`spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`",
+          "`speaker`: optional",
+          "`language`: optional",
+          "`position`: optional `top`, `middle`, `bottom`, or `below_faces` (to automatically avoid covering detected faces)",
+          "`margin_top`: optional top edge margin in pixels",
+          "`margin_bottom`: optional bottom edge margin in pixels",
+          "`margin_left`: optional left edge margin in pixels",
+          "`margin_right`: optional right edge margin in pixels",
+          "`offset_y`: optional vertical pixel adjustment",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "字幕文本与 spans 内容不一致时，后续 prepare_project_render 或 render_project 可能校验失败。"
+      ]
+    },
+    {
+      "name": "batch_update_project_subtitles",
+      "title": "Project Subtitle Batch Styling Tool",
+      "description": "Update many subtitle cues in one call, including positions, spans, and multiple subtitle effects per cue.",
+      "source": "project",
+      "doc_file": "batch_update_project_subtitles.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "batch_update_project_subtitles\n\nPurpose\n- Update many subtitle cues in one call.\n- Use this when you need to reposition, recolor, highlight, or add multiple effects across several subtitles.\n- Prefer this tool over repeated subtitle/span/effect calls when styling 3 or more subtitles.\n\nInputs\n- `project_path`\n- `entries`: list of objects. Each object supports:\n  - `subtitle_id`: required\n  - `start`, `end`, `text`, `speaker`, `language`: optional cue updates\n  - `position`: optional `top`, `middle`, `bottom`, or `below_faces`\n  - `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `offset_y`: optional layout fields\n  - `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n  - `effects`: optional list of effect objects\n    - `kind`: required\n    - `parameters`: optional dict\n    - `replace`: optional bool, default true\n    - `span_id`: optional target one span instead of the full cue\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`\n- `state.updated_subtitle_ids`\n- `state.updated_subtitle_count`\n- `state.applied_effect_count`\n\nNotes\n- This tool applies all requested cue updates and effects under one project lock and one save.\n- It is the preferred path for bulk subtitle styling because it keeps tool-call count low and avoids oversized agent request chains.\n- You can combine `position=below_faces` with colored spans and stacked effects in the same entry.",
+      "doc_sections": {
+        "Purpose": "- Update many subtitle cues in one call.\n- Use this when you need to reposition, recolor, highlight, or add multiple effects across several subtitles.\n- Prefer this tool over repeated subtitle/span/effect calls when styling 3 or more subtitles.",
+        "Inputs": "- `project_path`\n- `entries`: list of objects. Each object supports:\n  - `subtitle_id`: required\n  - `start`, `end`, `text`, `speaker`, `language`: optional cue updates\n  - `position`: optional `top`, `middle`, `bottom`, or `below_faces`\n  - `margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `offset_y`: optional layout fields\n  - `spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`\n  - `effects`: optional list of effect objects\n    - `kind`: required\n    - `parameters`: optional dict\n    - `replace`: optional bool, default true\n    - `span_id`: optional target one span instead of the full cue\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`\n- `state.updated_subtitle_ids`\n- `state.updated_subtitle_count`\n- `state.applied_effect_count`",
+        "Notes": "- This tool applies all requested cue updates and effects under one project lock and one save.\n- It is the preferred path for bulk subtitle styling because it keeps tool-call count low and avoids oversized agent request chains.\n- You can combine `position=below_faces` with colored spans and stacked effects in the same entry.",
+        "title": "batch_update_project_subtitles"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update many subtitle cues in one call.",
+          "Use this when you need to reposition, recolor, highlight, or add multiple effects across several subtitles.",
+          "Prefer this tool over repeated subtitle/span/effect calls when styling 3 or more subtitles."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`entries`: list of objects. Each object supports:",
+          "`subtitle_id`: required",
+          "`start`, `end`, `text`, `speaker`, `language`: optional cue updates",
+          "`position`: optional `top`, `middle`, `bottom`, or `below_faces`",
+          "`margin_top`, `margin_bottom`, `margin_left`, `margin_right`, `offset_y`: optional layout fields",
+          "`spans`: optional list of rich-text spans with `id`, `text`, `color`, `bold`, `italic`, `underline`",
+          "`effects`: optional list of effect objects",
+          "`kind`: required",
+          "`parameters`: optional dict",
+          "`replace`: optional bool, default true",
+          "`span_id`: optional target one span instead of the full cue",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`",
+          "`state.updated_subtitle_ids`",
+          "`state.updated_subtitle_count`",
+          "`state.applied_effect_count`"
+        ],
+        "notes": [
+          "This tool applies all requested cue updates and effects under one project lock and one save.",
+          "It is the preferred path for bulk subtitle styling because it keeps tool-call count low and avoids oversized agent request chains.",
+          "You can combine `position=below_faces` with colored spans and stacked effects in the same entry."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "字幕文本与 spans 内容不一致时，后续 prepare_project_render 或 render_project 可能校验失败。"
+      ]
+    },
+    {
+      "name": "add_project_subtitle_span",
+      "title": "Project Subtitle Span Add Tool",
+      "description": "Add a styled span into one subtitle cue.",
+      "source": "project",
+      "doc_file": "add_project_subtitle_span.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_subtitle_span\n\nPurpose\n- Add one styled span into a subtitle cue.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `span_id`: optional\n- `text`\n- `color`: optional\n- `bold`: optional\n- `italic`: optional\n- `underline`: optional\n- `index`: optional insert position\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `render_state`\n\nNotes\n- Use this for a few highlighted words inside one subtitle line.",
+      "doc_sections": {
+        "Purpose": "- Add one styled span into a subtitle cue.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `span_id`: optional\n- `text`\n- `color`: optional\n- `bold`: optional\n- `italic`: optional\n- `underline`: optional\n- `index`: optional insert position\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `render_state`",
+        "Notes": "- Use this for a few highlighted words inside one subtitle line.",
+        "title": "add_project_subtitle_span"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add one styled span into a subtitle cue."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`span_id`: optional",
+          "`text`",
+          "`color`: optional",
+          "`bold`: optional",
+          "`italic`: optional",
+          "`underline`: optional",
+          "`index`: optional insert position",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`render_state`"
+        ],
+        "notes": [
+          "Use this for a few highlighted words inside one subtitle line."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "字幕文本与 spans 内容不一致时，后续 prepare_project_render 或 render_project 可能校验失败。"
+      ]
+    },
+    {
+      "name": "update_project_subtitle_span",
+      "title": "Project Subtitle Span Update Tool",
+      "description": "Update the text or style of one subtitle span.",
+      "source": "project",
+      "doc_file": "update_project_subtitle_span.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "update_project_subtitle_span\n\nPurpose\n- Update the style or text of one subtitle span.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `span_id`\n- `text`: optional\n- `color`: optional\n- `bold`: optional\n- `italic`: optional\n- `underline`: optional\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Update the style or text of one subtitle span.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `span_id`\n- `text`: optional\n- `color`: optional\n- `bold`: optional\n- `italic`: optional\n- `underline`: optional\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `render_state`",
+        "title": "update_project_subtitle_span"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update the style or text of one subtitle span."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`span_id`",
+          "`text`: optional",
+          "`color`: optional",
+          "`bold`: optional",
+          "`italic`: optional",
+          "`underline`: optional",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "字幕文本与 spans 内容不一致时，后续 prepare_project_render 或 render_project 可能校验失败。"
+      ]
+    },
+    {
+      "name": "remove_project_subtitle_span",
+      "title": "Project Subtitle Span Remove Tool",
+      "description": "Remove one subtitle span from a cue.",
+      "source": "project",
+      "doc_file": "remove_project_subtitle_span.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_subtitle_span\n\nPurpose\n- Remove one subtitle span from a cue.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `span_id`\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Remove one subtitle span from a cue.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `span_id`\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `render_state`",
+        "title": "remove_project_subtitle_span"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove one subtitle span from a cue."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`span_id`",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_subtitle",
+      "title": "Project Subtitle Remove Tool",
+      "description": "Remove a subtitle cue from a project file.",
+      "source": "project",
+      "doc_file": "remove_project_subtitle.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_subtitle\n\nPurpose\n- Remove a subtitle cue from the project.\n\nInputs\n- `project_path`\n- `subtitle_id`\n- `output_path`: optional\n\nReturns\n- `decision`\n- `changes`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Remove a subtitle cue from the project.",
+        "Inputs": "- `project_path`\n- `subtitle_id`\n- `output_path`: optional",
+        "Returns": "- `decision`\n- `changes`\n- `render_state`",
+        "title": "remove_project_subtitle"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove a subtitle cue from the project."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`",
+          "`output_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "prepare_project_render",
+      "title": "Project Render Planning Tool",
+      "description": "Validate a project and produce render readiness state.",
+      "source": "project",
+      "doc_file": "prepare_project_render.txt",
+      "registered": true,
+      "category": "planning",
+      "doc": "prepare_project_render\n\nPurpose\n- Validate the project before preview or final render.\n\nInputs\n- `project_path`\n- `preview_path`: optional\n- `final_path`: optional\n\nReturns\n- `decision`\n- `validation`\n- `render_state`\n- `next_actions`\n\nNotes\n- Render only when `render_state.ready` is true.\n- Use `validation.errors` and `render_state.blockers` to decide what to fix.",
+      "doc_sections": {
+        "Purpose": "- Validate the project before preview or final render.",
+        "Inputs": "- `project_path`\n- `preview_path`: optional\n- `final_path`: optional",
+        "Returns": "- `decision`\n- `validation`\n- `render_state`\n- `next_actions`",
+        "Notes": "- Render only when `render_state.ready` is true.\n- Use `validation.errors` and `render_state.blockers` to decide what to fix.",
+        "title": "prepare_project_render"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Validate the project before preview or final render."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`preview_path`: optional",
+          "`final_path`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`validation`",
+          "`render_state`",
+          "`next_actions`"
+        ],
+        "notes": [
+          "Render only when `render_state.ready` is true.",
+          "Use `validation.errors` and `render_state.blockers` to decide what to fix."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "返回规划或校验结果，不直接生成最终媒体文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "add_project_audio_stem",
+      "title": "Project Audio Stem Add Tool",
+      "description": "Add an audio stem reference to a project file.",
+      "source": "project",
+      "doc_file": "add_project_audio_stem.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_audio_stem\n\nAdd an audio stem reference to a project file.\n\nWhen to use:\n- Register a dialogue, music, or effects stem in the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`\n- `asset_path`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Add an audio stem reference to a project file.\n\nWhen to use:\n- Register a dialogue, music, or effects stem in the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`\n- `asset_path`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "add_project_audio_stem"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add an audio stem reference to a project file.\n\nWhen to use:\n- Register a dialogue, music, or effects stem in the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`\n- `asset_path`\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "update_project_audio_stem",
+      "title": "Project Audio Stem Update Tool",
+      "description": "Update an audio stem in a project file.",
+      "source": "project",
+      "doc_file": "update_project_audio_stem.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "update_project_audio_stem\n\nUpdate an audio stem in a project file.\n\nWhen to use:\n- Correct the role, source path, or track binding of a stem.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`: optional\n- `path`: optional\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Update an audio stem in a project file.\n\nWhen to use:\n- Correct the role, source path, or track binding of a stem.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`: optional\n- `path`: optional\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "update_project_audio_stem"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update an audio stem in a project file.\n\nWhen to use:\n- Correct the role, source path, or track binding of a stem.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `role`: optional\n- `path`: optional\n- `track_id`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_audio_stem",
+      "title": "Project Audio Stem Remove Tool",
+      "description": "Remove an audio stem from a project file.",
+      "source": "project",
+      "doc_file": "remove_project_audio_stem.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_audio_stem\n\nRemove an audio stem from a project file.\n\nWhen to use:\n- Remove an obsolete stem from the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Remove an audio stem from a project file.\n\nWhen to use:\n- Remove an obsolete stem from the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "remove_project_audio_stem"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove an audio stem from a project file.\n\nWhen to use:\n- Remove an obsolete stem from the project.\n\nInputs:\n- `project_path`\n- `stem_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "set_project_export_preset",
+      "title": "Project Export Preset Tool",
+      "description": "Create or update an export preset in a project file.",
+      "source": "project",
+      "doc_file": "set_project_export_preset.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "set_project_export_preset\n\nCreate or update an export preset in a project file.\n\nWhen to use:\n- Define delivery settings such as format, bitrate, codec, or container.\n\nInputs:\n- `project_path`\n- `preset_id`\n- `name`\n- `format`\n- `settings`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Create or update an export preset in a project file.\n\nWhen to use:\n- Define delivery settings such as format, bitrate, codec, or container.\n\nInputs:\n- `project_path`\n- `preset_id`\n- `name`\n- `format`\n- `settings`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "set_project_export_preset"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Create or update an export preset in a project file.\n\nWhen to use:\n- Define delivery settings such as format, bitrate, codec, or container.\n\nInputs:\n- `project_path`\n- `preset_id`\n- `name`\n- `format`\n- `settings`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "plan_project_export",
+      "title": "Project Export Planning Tool",
+      "description": "Plan preview, final, and sidecar export paths for a project.",
+      "source": "project",
+      "doc_file": "plan_project_export.txt",
+      "registered": true,
+      "category": "planning",
+      "doc": "plan_project_export\n\nPurpose\n- Plan preview, final, and sidecar export paths.\n\nInputs\n- `project_path`\n- `preset_id`\n- `output_dir`\n- `base_name`: optional\n\nReturns\n- `decision`\n- `render_state`\n- planned preview path\n- planned final path\n- planned sidecar path",
+      "doc_sections": {
+        "Purpose": "- Plan preview, final, and sidecar export paths.",
+        "Inputs": "- `project_path`\n- `preset_id`\n- `output_dir`\n- `base_name`: optional",
+        "Returns": "- `decision`\n- `render_state`\n- planned preview path\n- planned final path\n- planned sidecar path",
+        "title": "plan_project_export"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Plan preview, final, and sidecar export paths."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`preset_id`",
+          "`output_dir`",
+          "`base_name`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`render_state`",
+          "planned preview path",
+          "planned final path",
+          "planned sidecar path"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "返回规划或校验结果，不直接生成最终媒体文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "render_project",
+      "title": "Project Render Tool",
+      "description": "Render the project timeline to a final video file with subtitle burn-in.",
+      "source": "project",
+      "doc_file": "render_project.txt",
+      "registered": true,
+      "category": "render",
+      "doc": "render_project\n\nPurpose\n- Render the project timeline into a final video file.\n\nInputs\n- `project_path`\n- `output_path`\n- `track_id`: optional\n- `font_path`: optional\n- `font_size`: optional\n- `subtitle_color`: optional\n\nReturns\n- `decision`\n- `payload`\n- `render_state`\n- `artifacts` with the rendered video path\n\nNotes\n- This tool burns subtitle cues into the video output.\n- Run only after the project validates and the timeline is ready.\n- If `font_path` is omitted, the renderer searches `resources/fonts` for a Chinese font first.",
+      "doc_sections": {
+        "Purpose": "- Render the project timeline into a final video file.",
+        "Inputs": "- `project_path`\n- `output_path`\n- `track_id`: optional\n- `font_path`: optional\n- `font_size`: optional\n- `subtitle_color`: optional",
+        "Returns": "- `decision`\n- `payload`\n- `render_state`\n- `artifacts` with the rendered video path",
+        "Notes": "- This tool burns subtitle cues into the video output.\n- Run only after the project validates and the timeline is ready.\n- If `font_path` is omitted, the renderer searches `resources/fonts` for a Chinese font first.",
+        "title": "render_project"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Render the project timeline into a final video file."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`output_path`",
+          "`track_id`: optional",
+          "`font_path`: optional",
+          "`font_size`: optional",
+          "`subtitle_color`: optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`payload`",
+          "`render_state`",
+          "`artifacts` with the rendered video path"
+        ],
+        "notes": [
+          "This tool burns subtitle cues into the video output.",
+          "Run only after the project validates and the timeline is ready.",
+          "If `font_path` is omitted, the renderer searches `resources/fonts` for a Chinese font first."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取项目时间线并产出最终视频文件。",
+        "如果包含字幕，会在导出阶段烧录到视频中。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。",
+        "仅在项目校验通过后才适合执行。",
+        "字体未显式指定时会尝试从 resources/fonts 自动选择中文字体。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。",
+        "项目存在重复 ID、坏引用或非法时间范围时，渲染前校验不会通过。"
+      ]
+    },
+    {
+      "name": "add_project_effect",
+      "title": "Project Effect Add Tool",
+      "description": "Add a visual effect to a project file.",
+      "source": "project",
+      "doc_file": "add_project_effect.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_effect\n\nAdd a visual effect to a project file.\n\nWhen to use:\n- Attach a visual effect to a clip or track.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`\n- `kind`\n- `parameters`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Add a visual effect to a project file.\n\nWhen to use:\n- Attach a visual effect to a clip or track.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`\n- `kind`\n- `parameters`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "add_project_effect"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add a visual effect to a project file.\n\nWhen to use:\n- Attach a visual effect to a clip or track.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`\n- `kind`\n- `parameters`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "update_project_effect",
+      "title": "Project Effect Update Tool",
+      "description": "Update a visual effect in a project file.",
+      "source": "project",
+      "doc_file": "update_project_effect.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "update_project_effect\n\nUpdate a visual effect in a project file.\n\nWhen to use:\n- Adjust effect target, kind, or parameters.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`: optional\n- `kind`: optional\n- `parameters`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Update a visual effect in a project file.\n\nWhen to use:\n- Adjust effect target, kind, or parameters.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`: optional\n- `kind`: optional\n- `parameters`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "update_project_effect"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update a visual effect in a project file.\n\nWhen to use:\n- Adjust effect target, kind, or parameters.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `target_id`: optional\n- `kind`: optional\n- `parameters`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_effect",
+      "title": "Project Effect Remove Tool",
+      "description": "Remove a visual effect from a project file.",
+      "source": "project",
+      "doc_file": "remove_project_effect.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_effect\n\nRemove a visual effect from a project file.\n\nWhen to use:\n- Delete an effect from the project.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Remove a visual effect from a project file.\n\nWhen to use:\n- Delete an effect from the project.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "remove_project_effect"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove a visual effect from a project file.\n\nWhen to use:\n- Delete an effect from the project.\n\nInputs:\n- `project_path`\n- `effect_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "set_project_subtitle_effect",
+      "title": "Project Subtitle Effect Tool",
+      "description": "Attach a visual or animation effect to a subtitle cue.",
+      "source": "project",
+      "doc_file": "set_project_subtitle_effect.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "set_project_subtitle_effect\n\nPurpose\n- Attach a visual or animation effect to a subtitle cue.\n- The effect is stored in the subtitle cue's `effects` list and applied automatically at render time.\n- Calling this tool again with the same `kind` and `replace=true` (default) replaces the previous value.\n\nInputs\n- `project_path`\n- `subtitle_id`  – id of the subtitle cue to modify\n- `kind`         – effect type (see Supported effects below)\n- `parameters`   – optional dict of effect-specific parameters (see per-effect docs below)\n- `span_id`      – optional span id within the cue to apply the effect to a specific portion of text\n- `replace`      – optional bool (default true); when true, any existing effect with the same kind is replaced\n- `output_path`  – optional\n\nSupported effects\n-----------------\nVisual effects (applied to the subtitle still image at render time):\n\n  outline\n    color   – stroke color, default \"black\"\n    width   – stroke width in pixels, default 2\n\n  glow\n    color   – glow color, default \"white\"\n    radius  – gaussian blur radius in pixels, default 4\n\n  background_box\n    color   – fill color, default \"black\"\n    opacity – 0-255 alpha, default 160\n    padding – extra pixels around text rect, default 8\n\n  gradient\n    color_top    – top gradient color (e.g. \"#ff0000\")\n    color_bottom – bottom gradient color (e.g. \"#0000ff\")\n    direction    – \"vertical\" (default) or \"horizontal\"\n\nAnimation effects (applied to the clip timeline during render):\n\n  fade_in\n    duration – ramp-in duration in seconds, default 0.3\n\n  fade_out\n    duration – ramp-out duration in seconds, default 0.3\n\n  slide_in\n    direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"\n    duration  – animation duration in seconds, default 0.3\n    distance  – slide distance in pixels, default 40\n\n  slide_out\n    direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"\n    duration  – animation duration in seconds, default 0.3\n    distance  – slide distance in pixels, default 40\n\n  typewriter\n    chars_per_second – reveal speed, default 20\n    Note: this effect generates one ImageClip per character step.\n          It cannot be combined with slide_in / slide_out on the same cue.\n\n  scale_in\n    duration – zoom-in duration in seconds, default 0.3\n\nReturns\n- `decision`\n- `changes`\n- `validation`\n- `render_state`\n\nNotes\n- Multiple effects of different kinds can coexist on one cue.\n- Visual effects (outline, glow, background_box) can be stacked freely.\n- Animation effects (fade_in, fade_out, slide_in, slide_out, scale_in) are composited during moviepy render.\n- Per-cue `font_size` and `font_path` fields override the global render defaults.",
+      "doc_sections": {
+        "Purpose": "- Attach a visual or animation effect to a subtitle cue.\n- The effect is stored in the subtitle cue's `effects` list and applied automatically at render time.\n- Calling this tool again with the same `kind` and `replace=true` (default) replaces the previous value.",
+        "Inputs": "- `project_path`\n- `subtitle_id`  – id of the subtitle cue to modify\n- `kind`         – effect type (see Supported effects below)\n- `parameters`   – optional dict of effect-specific parameters (see per-effect docs below)\n- `span_id`      – optional span id within the cue to apply the effect to a specific portion of text\n- `replace`      – optional bool (default true); when true, any existing effect with the same kind is replaced\n- `output_path`  – optional\n\nSupported effects\n-----------------\nVisual effects (applied to the subtitle still image at render time):\n\n  outline\n    color   – stroke color, default \"black\"\n    width   – stroke width in pixels, default 2\n\n  glow\n    color   – glow color, default \"white\"\n    radius  – gaussian blur radius in pixels, default 4\n\n  background_box\n    color   – fill color, default \"black\"\n    opacity – 0-255 alpha, default 160\n    padding – extra pixels around text rect, default 8\n\n  gradient\n    color_top    – top gradient color (e.g. \"#ff0000\")\n    color_bottom – bottom gradient color (e.g. \"#0000ff\")\n    direction    – \"vertical\" (default) or \"horizontal\"\n\nAnimation effects (applied to the clip timeline during render):\n\n  fade_in\n    duration – ramp-in duration in seconds, default 0.3\n\n  fade_out\n    duration – ramp-out duration in seconds, default 0.3\n\n  slide_in\n    direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"\n    duration  – animation duration in seconds, default 0.3\n    distance  – slide distance in pixels, default 40\n\n  slide_out\n    direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"\n    duration  – animation duration in seconds, default 0.3\n    distance  – slide distance in pixels, default 40\n\n  typewriter\n    chars_per_second – reveal speed, default 20\n    Note: this effect generates one ImageClip per character step.\n          It cannot be combined with slide_in / slide_out on the same cue.\n\n  scale_in\n    duration – zoom-in duration in seconds, default 0.3",
+        "Returns": "- `decision`\n- `changes`\n- `validation`\n- `render_state`",
+        "Notes": "- Multiple effects of different kinds can coexist on one cue.\n- Visual effects (outline, glow, background_box) can be stacked freely.\n- Animation effects (fade_in, fade_out, slide_in, slide_out, scale_in) are composited during moviepy render.\n- Per-cue `font_size` and `font_path` fields override the global render defaults.",
+        "title": "set_project_subtitle_effect"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Attach a visual or animation effect to a subtitle cue.",
+          "The effect is stored in the subtitle cue's `effects` list and applied automatically at render time.",
+          "Calling this tool again with the same `kind` and `replace=true` (default) replaces the previous value."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id`  – id of the subtitle cue to modify",
+          "`kind`         – effect type (see Supported effects below)",
+          "`parameters`   – optional dict of effect-specific parameters (see per-effect docs below)",
+          "`span_id`      – optional span id within the cue to apply the effect to a specific portion of text",
+          "`replace`      – optional bool (default true); when true, any existing effect with the same kind is replaced",
+          "`output_path`  – optional",
+          "Supported effects",
+          "-----------------",
+          "Visual effects (applied to the subtitle still image at render time):",
+          "outline",
+          "color   – stroke color, default \"black\"",
+          "width   – stroke width in pixels, default 2",
+          "glow",
+          "color   – glow color, default \"white\"",
+          "radius  – gaussian blur radius in pixels, default 4",
+          "background_box",
+          "color   – fill color, default \"black\"",
+          "opacity – 0-255 alpha, default 160",
+          "padding – extra pixels around text rect, default 8",
+          "gradient",
+          "color_top    – top gradient color (e.g. \"#ff0000\")",
+          "color_bottom – bottom gradient color (e.g. \"#0000ff\")",
+          "direction    – \"vertical\" (default) or \"horizontal\"",
+          "Animation effects (applied to the clip timeline during render):",
+          "fade_in",
+          "duration – ramp-in duration in seconds, default 0.3",
+          "fade_out",
+          "duration – ramp-out duration in seconds, default 0.3",
+          "slide_in",
+          "direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"",
+          "duration  – animation duration in seconds, default 0.3",
+          "distance  – slide distance in pixels, default 40",
+          "slide_out",
+          "direction – \"bottom\" (default) | \"top\" | \"left\" | \"right\"",
+          "duration  – animation duration in seconds, default 0.3",
+          "distance  – slide distance in pixels, default 40",
+          "typewriter",
+          "chars_per_second – reveal speed, default 20",
+          "Note: this effect generates one ImageClip per character step.",
+          "It cannot be combined with slide_in / slide_out on the same cue.",
+          "scale_in",
+          "duration – zoom-in duration in seconds, default 0.3"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`validation`",
+          "`render_state`"
+        ],
+        "notes": [
+          "Multiple effects of different kinds can coexist on one cue.",
+          "Visual effects (outline, glow, background_box) can be stacked freely.",
+          "Animation effects (fade_in, fade_out, slide_in, slide_out, scale_in) are composited during moviepy render.",
+          "Per-cue `font_size` and `font_path` fields override the global render defaults."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_subtitle_effect",
+      "title": "Project Subtitle Effect Remove Tool",
+      "description": "Remove one or all effects from a subtitle cue.",
+      "source": "project",
+      "doc_file": "remove_project_subtitle_effect.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_subtitle_effect\n\nPurpose\n- Remove one or all effects from a subtitle cue.\n\nInputs\n- `project_path`\n- `subtitle_id` – id of the subtitle cue\n- `kind`        – optional; if provided only effects with this kind are removed; omit to clear all effects\n- `span_id`     – optional; if provided, effects are removed from the specific span instead of the cue\n- `output_path` – optional\n\nReturns\n- `decision`\n- `changes`\n- `render_state`",
+      "doc_sections": {
+        "Purpose": "- Remove one or all effects from a subtitle cue.",
+        "Inputs": "- `project_path`\n- `subtitle_id` – id of the subtitle cue\n- `kind`        – optional; if provided only effects with this kind are removed; omit to clear all effects\n- `span_id`     – optional; if provided, effects are removed from the specific span instead of the cue\n- `output_path` – optional",
+        "Returns": "- `decision`\n- `changes`\n- `render_state`",
+        "title": "remove_project_subtitle_effect"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove one or all effects from a subtitle cue."
+        ],
+        "inputs": [
+          "`project_path`",
+          "`subtitle_id` – id of the subtitle cue",
+          "`kind`        – optional; if provided only effects with this kind are removed; omit to clear all effects",
+          "`span_id`     – optional; if provided, effects are removed from the specific span instead of the cue",
+          "`output_path` – optional"
+        ],
+        "returns": [
+          "`decision`",
+          "`changes`",
+          "`render_state`"
+        ],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "add_project_comment",
+      "title": "Project Comment Add Tool",
+      "description": "Add a collaboration comment to a project file.",
+      "source": "project",
+      "doc_file": "add_project_comment.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "add_project_comment\n\nAdd a collaboration comment to a project file.\n\nWhen to use:\n- Add a review note or collaboration comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `author`\n- `text`\n- `anchor`: optional\n- `timecode`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Add a collaboration comment to a project file.\n\nWhen to use:\n- Add a review note or collaboration comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `author`\n- `text`\n- `anchor`: optional\n- `timecode`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "add_project_comment"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Add a collaboration comment to a project file.\n\nWhen to use:\n- Add a review note or collaboration comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `author`\n- `text`\n- `anchor`: optional\n- `timecode`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "update_project_comment",
+      "title": "Project Comment Update Tool",
+      "description": "Update an existing project comment.",
+      "source": "project",
+      "doc_file": "update_project_comment.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "update_project_comment\n\nUpdate an existing project comment.\n\nWhen to use:\n- Edit the text, anchor, timecode, or lock state of a comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `text`: optional\n- `anchor`: optional\n- `timecode`: optional\n- `locked`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Update an existing project comment.\n\nWhen to use:\n- Edit the text, anchor, timecode, or lock state of a comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `text`: optional\n- `anchor`: optional\n- `timecode`: optional\n- `locked`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "update_project_comment"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Update an existing project comment.\n\nWhen to use:\n- Edit the text, anchor, timecode, or lock state of a comment.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `text`: optional\n- `anchor`: optional\n- `timecode`: optional\n- `locked`: optional\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "remove_project_comment",
+      "title": "Project Comment Remove Tool",
+      "description": "Remove a collaboration comment from a project file.",
+      "source": "project",
+      "doc_file": "remove_project_comment.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "remove_project_comment\n\nRemove a collaboration comment from a project file.\n\nWhen to use:\n- Delete a review note from the project.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Remove a collaboration comment from a project file.\n\nWhen to use:\n- Delete a review note from the project.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "remove_project_comment"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Remove a collaboration comment from a project file.\n\nWhen to use:\n- Delete a review note from the project.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "lock_project_comment",
+      "title": "Project Comment Lock Tool",
+      "description": "Lock or unlock a collaboration comment.",
+      "source": "project",
+      "doc_file": "lock_project_comment.txt",
+      "registered": true,
+      "category": "mutation",
+      "doc": "lock_project_comment\n\nLock or unlock a collaboration comment.\n\nWhen to use:\n- Freeze a comment during review or allow edits again.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `locked`: `true` or `false`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+      "doc_sections": {
+        "body": "Lock or unlock a collaboration comment.\n\nWhen to use:\n- Freeze a comment during review or allow edits again.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `locked`: `true` or `false`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`",
+        "title": "lock_project_comment"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Lock or unlock a collaboration comment.\n\nWhen to use:\n- Freeze a comment during review or allow edits again.\n\nInputs:\n- `project_path`\n- `comment_id`\n- `locked`: `true` or `false`\n- `output_path`: optional\n\nReturns:\n- updated project snapshot\n- `changes`"
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "会读取并改写项目文件中的对应结构。",
+        "结果通常反映在 assets、timeline、subtitles、effects、comments、audio_stems 或 metadata 上。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "detect_faces",
+      "title": "Face Detection Tool",
+      "description": "Detect faces in a project's source video and return their bounding box positions per sampled frame.",
+      "source": "project",
+      "doc_file": "detect_faces.txt",
+      "registered": true,
+      "category": "read_or_analyze",
+      "doc": "detect_faces\n\nPurpose\n- Detect human faces in a project's source video, save their positions in the project metadata, and return their pixel and normalized bounding-box positions for each sampled frame. The saved metadata can be used by subtitle rendering to automatically dodge faces (e.g. `position=\"below_faces\"` in update_project_subtitle).\n\nInputs\n- `project_path`: path to the project JSON file\n- `media_path`: optional override video path (defaults to project source media)\n- `timestamps`: optional list of specific timestamps (seconds) to sample; if omitted, frames are sampled every `sample_interval` seconds\n- `sample_interval`: seconds between auto-sampled frames, default `1.0`\n- `max_frames`: maximum number of frames to sample when auto-sampling, default `30`\n- `scale_factor`: Haar cascade scaleFactor, default `1.1`\n- `min_neighbors`: Haar cascade minNeighbors, default `5`\n- `min_face_size`: minimum face size in pixels, default `30`\n\nReturns\n- `ok`: true on success\n- `state` with:\n  - `video_width`, `video_height`\n  - `duration`, `fps`\n  - `frames_sampled`\n  - `frames_with_faces`\n  - `total_faces_detected`\n- `payload` with:\n  - `video_width`, `video_height`, `duration`, `fps`\n  - `total_faces_detected`\n  - `frames_with_faces`\n  - `frames`: list of frame objects, each containing:\n    - `timestamp`: float seconds\n    - `frame_index`: int\n    - `face_count`: int\n    - `faces`: list of face objects:\n      - `x`, `y`, `w`, `h`: pixel bounding box (top-left origin)\n      - `cx`, `cy`: center pixel coordinates\n      - `norm_x`, `norm_y`, `norm_w`, `norm_h`: normalized coordinates (0.0–1.0)\n\nNotes\n- Requires `opencv-python` installed (`pip install opencv-python`).\n- Uses OpenCV Haar cascade (`haarcascade_frontalface_default.xml`) bundled with OpenCV — no external model download needed.\n- Use `timestamps` for targeted sampling (e.g. at subtitle cue midpoints).\n- Use normalized coordinates (`norm_x`, `norm_y`, `norm_w`, `norm_h`) when computing subtitle placement relative to faces.\n- Returns `faces.detected` code even when zero faces are found.",
+      "doc_sections": {
+        "Purpose": "- Detect human faces in a project's source video, save their positions in the project metadata, and return their pixel and normalized bounding-box positions for each sampled frame. The saved metadata can be used by subtitle rendering to automatically dodge faces (e.g. `position=\"below_faces\"` in update_project_subtitle).",
+        "Inputs": "- `project_path`: path to the project JSON file\n- `media_path`: optional override video path (defaults to project source media)\n- `timestamps`: optional list of specific timestamps (seconds) to sample; if omitted, frames are sampled every `sample_interval` seconds\n- `sample_interval`: seconds between auto-sampled frames, default `1.0`\n- `max_frames`: maximum number of frames to sample when auto-sampling, default `30`\n- `scale_factor`: Haar cascade scaleFactor, default `1.1`\n- `min_neighbors`: Haar cascade minNeighbors, default `5`\n- `min_face_size`: minimum face size in pixels, default `30`",
+        "Returns": "- `ok`: true on success\n- `state` with:\n  - `video_width`, `video_height`\n  - `duration`, `fps`\n  - `frames_sampled`\n  - `frames_with_faces`\n  - `total_faces_detected`\n- `payload` with:\n  - `video_width`, `video_height`, `duration`, `fps`\n  - `total_faces_detected`\n  - `frames_with_faces`\n  - `frames`: list of frame objects, each containing:\n    - `timestamp`: float seconds\n    - `frame_index`: int\n    - `face_count`: int\n    - `faces`: list of face objects:\n      - `x`, `y`, `w`, `h`: pixel bounding box (top-left origin)\n      - `cx`, `cy`: center pixel coordinates\n      - `norm_x`, `norm_y`, `norm_w`, `norm_h`: normalized coordinates (0.0–1.0)",
+        "Notes": "- Requires `opencv-python` installed (`pip install opencv-python`).\n- Uses OpenCV Haar cascade (`haarcascade_frontalface_default.xml`) bundled with OpenCV — no external model download needed.\n- Use `timestamps` for targeted sampling (e.g. at subtitle cue midpoints).\n- Use normalized coordinates (`norm_x`, `norm_y`, `norm_w`, `norm_h`) when computing subtitle placement relative to faces.\n- Returns `faces.detected` code even when zero faces are found.",
+        "title": "detect_faces"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Detect human faces in a project's source video, save their positions in the project metadata, and return their pixel and normalized bounding-box positions for each sampled frame. The saved metadata can be used by subtitle rendering to automatically dodge faces (e.g. `position=\"below_faces\"` in update_project_subtitle)."
+        ],
+        "inputs": [
+          "`project_path`: path to the project JSON file",
+          "`media_path`: optional override video path (defaults to project source media)",
+          "`timestamps`: optional list of specific timestamps (seconds) to sample; if omitted, frames are sampled every `sample_interval` seconds",
+          "`sample_interval`: seconds between auto-sampled frames, default `1.0`",
+          "`max_frames`: maximum number of frames to sample when auto-sampling, default `30`",
+          "`scale_factor`: Haar cascade scaleFactor, default `1.1`",
+          "`min_neighbors`: Haar cascade minNeighbors, default `5`",
+          "`min_face_size`: minimum face size in pixels, default `30`"
+        ],
+        "returns": [
+          "`ok`: true on success",
+          "`state` with:",
+          "`video_width`, `video_height`",
+          "`duration`, `fps`",
+          "`frames_sampled`",
+          "`frames_with_faces`",
+          "`total_faces_detected`",
+          "`payload` with:",
+          "`video_width`, `video_height`, `duration`, `fps`",
+          "`total_faces_detected`",
+          "`frames_with_faces`",
+          "`frames`: list of frame objects, each containing:",
+          "`timestamp`: float seconds",
+          "`frame_index`: int",
+          "`face_count`: int",
+          "`faces`: list of face objects:",
+          "`x`, `y`, `w`, `h`: pixel bounding box (top-left origin)",
+          "`cx`, `cy`: center pixel coordinates",
+          "`norm_x`, `norm_y`, `norm_w`, `norm_h`: normalized coordinates (0.0–1.0)"
+        ],
+        "notes": [
+          "Requires `opencv-python` installed (`pip install opencv-python`).",
+          "Uses OpenCV Haar cascade (`haarcascade_frontalface_default.xml`) bundled with OpenCV — no external model download needed.",
+          "Use `timestamps` for targeted sampling (e.g. at subtitle cue midpoints).",
+          "Use normalized coordinates (`norm_x`, `norm_y`, `norm_w`, `norm_h`) when computing subtitle placement relative to faces.",
+          "Returns `faces.detected` code even when zero faces are found."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "读取、搜索或分析现有项目/媒体状态。",
+        "正常情况下不会改写项目文件。"
+      ],
+      "boundaries": [
+        "项目必须具备有效的 project id 与 name。",
+        "引用关系必须闭合：clip.asset_id、effect.target_id、audio_stem.track_id 都必须指向现有对象。",
+        "时间范围必须合法：clip/subtitle 的 end 必须大于 start，且 start 不能小于 0。",
+        "字幕 spans 模式下，cue.text 必须与所有 span.text 拼接结果一致。",
+        "asset_id、clip_id、subtitle_id 不能重复。",
+        "工作区路径不能逃逸出 AICLIP_WORKSPACE 对应的项目根目录。"
+      ],
+      "edge_cases": [
+        "目标对象不存在时，通常会以校验错误、引用缺失或空结果形式返回。",
+        "传入相对路径时，会相对项目工作区解析；越界路径会被拒绝。"
+      ]
+    },
+    {
+      "name": "vision_analyze_media",
+      "title": "Vision Analyze Media Tool",
+      "description": "Analyze an image or video with an OpenAI-compatible vision model.",
+      "source": "vision",
+      "doc_file": "vision_analyze_media.txt",
+      "registered": true,
+      "category": "analysis",
+      "doc": "vision_analyze_media\n\nPurpose\n- Analyze image or video content with an OpenAI-compatible vision model.\n\nInputs\n- `media_path`: public URL or local file path\n- `prompt`: analysis instruction; default asks for key events and timestamps\n- `media_type`: optional `image` or `video`; inferred from path when omitted\n- `model`: optional override model name\n- `api_base`: optional override API base URL\n- `api_key`: optional override API key\n- `fps`: optional video frame sampling rate\n- `temperature`: optional decoding temperature\n- `max_tokens`: optional response token limit\n\nReturns\n- `ok`: true on success\n- `content`: model analysis text (primary field to read)\n- `message`: same as `content` (alias)\n- `summary`: same as `content` (alias)\n- `decision`: structured decision dict\n- `state.model`, `state.media_type`, `state.usage`\n\nNotes\n- Default endpoint and model can be configured via env:\n  - `AICLIP_VISION_API_BASE`\n  - `AICLIP_VISION_API_KEY`\n  - `AICLIP_VISION_MODEL`\n- The `OPENAI_API_KEY` value is NOT used as a fallback for vision requests to avoid\n  sending it to non-OpenAI endpoints. Set `AICLIP_VISION_API_KEY` explicitly.",
+      "doc_sections": {
+        "Purpose": "- Analyze image or video content with an OpenAI-compatible vision model.",
+        "Inputs": "- `media_path`: public URL or local file path\n- `prompt`: analysis instruction; default asks for key events and timestamps\n- `media_type`: optional `image` or `video`; inferred from path when omitted\n- `model`: optional override model name\n- `api_base`: optional override API base URL\n- `api_key`: optional override API key\n- `fps`: optional video frame sampling rate\n- `temperature`: optional decoding temperature\n- `max_tokens`: optional response token limit",
+        "Returns": "- `ok`: true on success\n- `content`: model analysis text (primary field to read)\n- `message`: same as `content` (alias)\n- `summary`: same as `content` (alias)\n- `decision`: structured decision dict\n- `state.model`, `state.media_type`, `state.usage`",
+        "Notes": "- Default endpoint and model can be configured via env:\n  - `AICLIP_VISION_API_BASE`\n  - `AICLIP_VISION_API_KEY`\n  - `AICLIP_VISION_MODEL`\n- The `OPENAI_API_KEY` value is NOT used as a fallback for vision requests to avoid\n  sending it to non-OpenAI endpoints. Set `AICLIP_VISION_API_KEY` explicitly.",
+        "title": "vision_analyze_media"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Analyze image or video content with an OpenAI-compatible vision model."
+        ],
+        "inputs": [
+          "`media_path`: public URL or local file path",
+          "`prompt`: analysis instruction; default asks for key events and timestamps",
+          "`media_type`: optional `image` or `video`; inferred from path when omitted",
+          "`model`: optional override model name",
+          "`api_base`: optional override API base URL",
+          "`api_key`: optional override API key",
+          "`fps`: optional video frame sampling rate",
+          "`temperature`: optional decoding temperature",
+          "`max_tokens`: optional response token limit"
+        ],
+        "returns": [
+          "`ok`: true on success",
+          "`content`: model analysis text (primary field to read)",
+          "`message`: same as `content` (alias)",
+          "`summary`: same as `content` (alias)",
+          "`decision`: structured decision dict",
+          "`state.model`, `state.media_type`, `state.usage`"
+        ],
+        "notes": [
+          "Default endpoint and model can be configured via env:",
+          "`AICLIP_VISION_API_BASE`",
+          "`AICLIP_VISION_API_KEY`",
+          "`AICLIP_VISION_MODEL`",
+          "The `OPENAI_API_KEY` value is NOT used as a fallback for vision requests to avoid",
+          "sending it to non-OpenAI endpoints. Set `AICLIP_VISION_API_KEY` explicitly."
+        ],
+        "workflow": []
+      },
+      "effects": [
+        "对输入媒体执行视觉分析并返回文本结果与调用状态。",
+        "不会修改项目文件。"
+      ],
+      "boundaries": [
+        "必须提供 AICLIP_VISION_API_KEY 或 DASHSCOPE_API_KEY。",
+        "本机未安装 dashscope SDK 时会直接返回安装提示。",
+        "视频分析会按 fps 抽帧，超时与重试次数受环境变量控制。"
+      ],
+      "edge_cases": [
+        "如果媒体类型推断错误，可显式传入 media_type 覆盖自动判断。"
+      ]
+    },
+    {
+      "name": "search_net_asset",
+      "title": "Network Asset Search Tool",
+      "description": "Search online stock libraries for free-to-use assets.",
+      "source": "net_asset",
+      "doc_file": "search_net_asset.txt",
+      "registered": true,
+      "category": "network",
+      "doc": "search_net_asset\n\nSearch online stock libraries for free-to-use media assets.\n\nWhen to use:\n- User needs background video, B-roll, stock photos, or audio clips.\n- AI decides to source supplementary media from the web.\n\nProviders:\n- pexels   — video + image (Pexels License, free commercial use)\n- pixabay  — video + image (Pixabay License, free commercial use)\n- freesound — audio SFX + music loops (Creative Commons)\n- auto     — picks the best available provider for the requested media type\n\nInputs:\n- `query`      — natural-language search (e.g. \"sunset beach\", \"city crowd noise\")\n- `media_type` — \"video\" | \"image\" | \"audio\"  (default: \"video\")\n- `provider`   — \"pexels\" | \"pixabay\" | \"freesound\" | \"auto\"  (default: \"auto\")\n- `per_page`   — number of results 1–80  (default: 8)\n- `orientation` — optional filter: \"landscape\" | \"portrait\" | \"square\"\n\nReturns (on success):\n- `ok`: true\n- `provider_used`: which provider actually served results\n- `total_returned`: count of results in this page\n- `results[]`: list of asset objects, each with:\n    - `id`           — provider-specific ID\n    - `title`        — human-readable name / alt-text\n    - `media_type`   — \"video\" | \"image\" | \"audio\"\n    - `provider`     — source provider name\n    - `preview_url`  — thumbnail / low-res URL (for display only)\n    - `download_url` — direct file URL; pass to download_net_asset\n    - `page_url`     — original page link (required for attribution)\n    - `author`       — creator's name\n    - `attribution`  — full attribution string (must be stored)\n    - `license`      — license name\n    - `duration`     — seconds (video/audio) or null\n    - `width`/`height` — pixels (video/image) or null\n    - `tags`         — list of keywords\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. missing API key)\n- `results`: []\n\nWorkflow:\n1. Call search_net_asset to get a list of candidates.\n2. Present options to the user or pick the best match automatically.\n3. Call download_net_asset with the chosen result's `download_url`.\n4. Call add_project_asset with the returned `local_path` to register it.\n5. Store `attribution` in the asset metadata for compliance.\n\nAttribution requirement:\nPexels and Pixabay require that the author and source are credited whenever\ntheir content is displayed.  Always copy the `attribution` field into the\nasset's metadata when calling add_project_asset.",
+      "doc_sections": {
+        "body": "Search online stock libraries for free-to-use media assets.\n\nWhen to use:\n- User needs background video, B-roll, stock photos, or audio clips.\n- AI decides to source supplementary media from the web.\n\nProviders:\n- pexels   — video + image (Pexels License, free commercial use)\n- pixabay  — video + image (Pixabay License, free commercial use)\n- freesound — audio SFX + music loops (Creative Commons)\n- auto     — picks the best available provider for the requested media type\n\nInputs:\n- `query`      — natural-language search (e.g. \"sunset beach\", \"city crowd noise\")\n- `media_type` — \"video\" | \"image\" | \"audio\"  (default: \"video\")\n- `provider`   — \"pexels\" | \"pixabay\" | \"freesound\" | \"auto\"  (default: \"auto\")\n- `per_page`   — number of results 1–80  (default: 8)\n- `orientation` — optional filter: \"landscape\" | \"portrait\" | \"square\"\n\nReturns (on success):\n- `ok`: true\n- `provider_used`: which provider actually served results\n- `total_returned`: count of results in this page\n- `results[]`: list of asset objects, each with:\n    - `id`           — provider-specific ID\n    - `title`        — human-readable name / alt-text\n    - `media_type`   — \"video\" | \"image\" | \"audio\"\n    - `provider`     — source provider name\n    - `preview_url`  — thumbnail / low-res URL (for display only)\n    - `download_url` — direct file URL; pass to download_net_asset\n    - `page_url`     — original page link (required for attribution)\n    - `author`       — creator's name\n    - `attribution`  — full attribution string (must be stored)\n    - `license`      — license name\n    - `duration`     — seconds (video/audio) or null\n    - `width`/`height` — pixels (video/image) or null\n    - `tags`         — list of keywords\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. missing API key)\n- `results`: []\n\nWorkflow:\n1. Call search_net_asset to get a list of candidates.\n2. Present options to the user or pick the best match automatically.\n3. Call download_net_asset with the chosen result's `download_url`.\n4. Call add_project_asset with the returned `local_path` to register it.\n5. Store `attribution` in the asset metadata for compliance.\n\nAttribution requirement:\nPexels and Pixabay require that the author and source are credited whenever\ntheir content is displayed.  Always copy the `attribution` field into the\nasset's metadata when calling add_project_asset.",
+        "title": "search_net_asset"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Search online stock libraries for free-to-use media assets.\n\nWhen to use:\n- User needs background video, B-roll, stock photos, or audio clips.\n- AI decides to source supplementary media from the web.\n\nProviders:\n- pexels   — video + image (Pexels License, free commercial use)\n- pixabay  — video + image (Pixabay License, free commercial use)\n- freesound — audio SFX + music loops (Creative Commons)\n- auto     — picks the best available provider for the requested media type\n\nInputs:\n- `query`      — natural-language search (e.g. \"sunset beach\", \"city crowd noise\")\n- `media_type` — \"video\" | \"image\" | \"audio\"  (default: \"video\")\n- `provider`   — \"pexels\" | \"pixabay\" | \"freesound\" | \"auto\"  (default: \"auto\")\n- `per_page`   — number of results 1–80  (default: 8)\n- `orientation` — optional filter: \"landscape\" | \"portrait\" | \"square\"\n\nReturns (on success):\n- `ok`: true\n- `provider_used`: which provider actually served results\n- `total_returned`: count of results in this page\n- `results[]`: list of asset objects, each with:\n    - `id`           — provider-specific ID\n    - `title`        — human-readable name / alt-text\n    - `media_type`   — \"video\" | \"image\" | \"audio\"\n    - `provider`     — source provider name\n    - `preview_url`  — thumbnail / low-res URL (for display only)\n    - `download_url` — direct file URL; pass to download_net_asset\n    - `page_url`     — original page link (required for attribution)\n    - `author`       — creator's name\n    - `attribution`  — full attribution string (must be stored)\n    - `license`      — license name\n    - `duration`     — seconds (video/audio) or null\n    - `width`/`height` — pixels (video/image) or null\n    - `tags`         — list of keywords\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. missing API key)\n- `results`: []\n\nWorkflow:\n1. Call search_net_asset to get a list of candidates.\n2. Present options to the user or pick the best match automatically.\n3. Call download_net_asset with the chosen result's `download_url`.\n4. Call add_project_asset with the returned `local_path` to register it.\n5. Store `attribution` in the asset metadata for compliance.\n\nAttribution requirement:\nPexels and Pixabay require that the author and source are credited whenever\ntheir content is displayed.  Always copy the `attribution` field into the\nasset's metadata when calling add_project_asset."
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "向外部素材站点发起检索请求并返回候选素材。",
+        "不会修改项目文件。"
+      ],
+      "boundaries": [
+        "依赖对应 provider 的 API Key；未配置时会返回 no_provider 错误。",
+        "auto provider 会按 media_type 选择可用服务，audio 优先 freesound，其它优先 pexels。",
+        "per_page 会被限制在 1 到 80 之间。"
+      ],
+      "edge_cases": [
+        "即使请求成功，也可能返回 0 个结果；这种情况不是系统错误。"
+      ]
+    },
+    {
+      "name": "download_net_asset",
+      "title": "Network Asset Download Tool",
+      "description": "Download a stock asset from a URL returned by search_net_asset.",
+      "source": "net_asset",
+      "doc_file": "download_net_asset.txt",
+      "registered": true,
+      "category": "network",
+      "doc": "download_net_asset\n\nDownload a stock media file to the local filesystem.\n\nWhen to use:\n- After search_net_asset has returned results and the desired asset is chosen.\n- Before calling add_project_asset to register the file in a project.\n\nInputs:\n- `download_url` — direct file URL from a search result's `download_url` field (required)\n- `save_to`      — destination directory path; defaults to \"tmp/\" (optional)\n- `filename`     — override the saved filename; inferred from URL if omitted (optional)\n- `attribution`  — attribution text from the search result (optional, stored in return value)\n- `project_path` — path to an existing project.json (optional). When provided, the tool\n                   resolves the download destination relative to the project workspace and\n                   returns a workspace-relative path in `state.project_asset_path`.\n                   Pass this value as `asset_path` to add_project_asset so the asset path\n                   is stored as a project-relative path (e.g. \"media/clip.mp4\") rather\n                   than an absolute filesystem path.\n\nReturns (on success):\n- `ok`: true\n- `local_path`: absolute path of the saved file\n- `filename`: final filename on disk\n- `attribution`: attribution text (pass this to add_project_asset metadata)\n- `state.project_asset_path`: workspace-relative path (only present when `project_path` was given)\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. network timeout, disk full)\n\nWorkflow after download:\n1. If `project_path` was given, use `state.project_asset_path` as the `asset_path` when\n   calling add_project_asset (workspace-relative, e.g. \"media/clip.mp4\").\n2. Otherwise use `local_path` as the `asset_path` (absolute path).\n3. Include `attribution` in the asset metadata, e.g.:\n     { \"attribution\": \"<attribution text>\", \"source\": \"pexels\" }\n\nNotes:\n- Files are saved once; repeated calls with the same URL skip re-downloading.\n- Default destination is \"tmp/\" relative to the project working directory.\n- Large video files may take several seconds to download.",
+      "doc_sections": {
+        "body": "Download a stock media file to the local filesystem.\n\nWhen to use:\n- After search_net_asset has returned results and the desired asset is chosen.\n- Before calling add_project_asset to register the file in a project.\n\nInputs:\n- `download_url` — direct file URL from a search result's `download_url` field (required)\n- `save_to`      — destination directory path; defaults to \"tmp/\" (optional)\n- `filename`     — override the saved filename; inferred from URL if omitted (optional)\n- `attribution`  — attribution text from the search result (optional, stored in return value)\n- `project_path` — path to an existing project.json (optional). When provided, the tool\n                   resolves the download destination relative to the project workspace and\n                   returns a workspace-relative path in `state.project_asset_path`.\n                   Pass this value as `asset_path` to add_project_asset so the asset path\n                   is stored as a project-relative path (e.g. \"media/clip.mp4\") rather\n                   than an absolute filesystem path.\n\nReturns (on success):\n- `ok`: true\n- `local_path`: absolute path of the saved file\n- `filename`: final filename on disk\n- `attribution`: attribution text (pass this to add_project_asset metadata)\n- `state.project_asset_path`: workspace-relative path (only present when `project_path` was given)\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. network timeout, disk full)\n\nWorkflow after download:\n1. If `project_path` was given, use `state.project_asset_path` as the `asset_path` when\n   calling add_project_asset (workspace-relative, e.g. \"media/clip.mp4\").\n2. Otherwise use `local_path` as the `asset_path` (absolute path).\n3. Include `attribution` in the asset metadata, e.g.:\n     { \"attribution\": \"<attribution text>\", \"source\": \"pexels\" }\n\nNotes:\n- Files are saved once; repeated calls with the same URL skip re-downloading.\n- Default destination is \"tmp/\" relative to the project working directory.\n- Large video files may take several seconds to download.",
+        "title": "download_net_asset"
+      },
+      "usage_summary": {
+        "purpose": [
+          "Download a stock media file to the local filesystem.\n\nWhen to use:\n- After search_net_asset has returned results and the desired asset is chosen.\n- Before calling add_project_asset to register the file in a project.\n\nInputs:\n- `download_url` — direct file URL from a search result's `download_url` field (required)\n- `save_to`      — destination directory path; defaults to \"tmp/\" (optional)\n- `filename`     — override the saved filename; inferred from URL if omitted (optional)\n- `attribution`  — attribution text from the search result (optional, stored in return value)\n- `project_path` — path to an existing project.json (optional). When provided, the tool\n                   resolves the download destination relative to the project workspace and\n                   returns a workspace-relative path in `state.project_asset_path`.\n                   Pass this value as `asset_path` to add_project_asset so the asset path\n                   is stored as a project-relative path (e.g. \"media/clip.mp4\") rather\n                   than an absolute filesystem path.\n\nReturns (on success):\n- `ok`: true\n- `local_path`: absolute path of the saved file\n- `filename`: final filename on disk\n- `attribution`: attribution text (pass this to add_project_asset metadata)\n- `state.project_asset_path`: workspace-relative path (only present when `project_path` was given)\n\nReturns (on error):\n- `ok`: false\n- `error`: human-readable reason (e.g. network timeout, disk full)\n\nWorkflow after download:\n1. If `project_path` was given, use `state.project_asset_path` as the `asset_path` when\n   calling add_project_asset (workspace-relative, e.g. \"media/clip.mp4\").\n2. Otherwise use `local_path` as the `asset_path` (absolute path).\n3. Include `attribution` in the asset metadata, e.g.:\n     { \"attribution\": \"<attribution text>\", \"source\": \"pexels\" }\n\nNotes:\n- Files are saved once; repeated calls with the same URL skip re-downloading.\n- Default destination is \"tmp/\" relative to the project working directory.\n- Large video files may take several seconds to download."
+        ],
+        "inputs": [],
+        "returns": [],
+        "notes": [],
+        "workflow": []
+      },
+      "effects": [
+        "下载远程素材到本地目录或项目工作区 media 目录。",
+        "下载完成后仍需单独调用 add_project_asset 才会进入项目。"
+      ],
+      "boundaries": [
+        "下载失败会返回错误，不会自动补注册到项目。",
+        "如果提供 project_path，素材会优先落到对应项目工作区的 media 目录。"
+      ],
+      "edge_cases": [
+        "仅有 local_path 还不代表项目可用，必须进一步注册为项目资产。"
+      ]
+    }
+  ],
+  "cli": {
+    "builtin_commands": [
+      {
+        "name": "/help",
+        "description": "Show this help message"
+      },
+      {
+        "name": "/exit",
+        "description": "Exit the CLI"
+      },
+      {
+        "name": "/quit",
+        "description": "Exit the CLI"
+      },
+      {
+        "name": "/clear",
+        "description": "Clear conversation history"
+      },
+      {
+        "name": "/verbose",
+        "description": "Toggle verbose output"
+      },
+      {
+        "name": "/status",
+        "description": "Show current session state"
+      },
+      {
+        "name": "/plan <request>",
+        "description": "Preview an execution plan without running it"
+      },
+      {
+        "name": "/run",
+        "description": "Execute the most recent previewed plan"
+      },
+      {
+        "name": "/execute",
+        "description": "Execute the most recent previewed plan"
+      }
+    ],
+    "skill_commands": [
+      {
+        "name": "/skills",
+        "description": "List available skills"
+      },
+      {
+        "name": "/skill <name>",
+        "description": "Switch and lock the active skill"
+      },
+      {
+        "name": "/auto_skill",
+        "description": "Return to automatic skill routing"
+      }
+    ],
+    "core_tools": [
+      {
+        "name": "create_project_from_media",
+        "description": "Create a project from raw media"
+      },
+      {
+        "name": "transcribe_audio",
+        "description": "Generate subtitle cues from audio"
+      },
+      {
+        "name": "remove_project_silence",
+        "description": "Remove gaps between subtitle cues"
+      },
+      {
+        "name": "load_project",
+        "description": "Load a JSON or XML project"
+      },
+      {
+        "name": "save_project",
+        "description": "Save the current project"
+      },
+      {
+        "name": "set_project_metadata",
+        "description": "Update project metadata"
+      },
+      {
+        "name": "trim_project_clip",
+        "description": "Trim a timeline clip"
+      },
+      {
+        "name": "set_project_clip_speed",
+        "description": "Change clip speed"
+      },
+      {
+        "name": "add_project_asset",
+        "description": "Register a media asset"
+      },
+      {
+        "name": "add/update/remove_project_subtitle",
+        "description": "Manage subtitle cues"
+      },
+      {
+        "name": "batch_update_project_subtitles",
+        "description": "Bulk subtitle positioning, highlighting, and effects"
+      },
+      {
+        "name": "add/update/remove_project_subtitle_span",
+        "description": "Manage highlighted words inside subtitles"
+      },
+      {
+        "name": "add/update/remove_project_audio_stem",
+        "description": "Manage dialogue/music/effects stems"
+      },
+      {
+        "name": "add/update/remove_project_effect",
+        "description": "Manage visual effects"
+      },
+      {
+        "name": "add/update/remove_project_comment",
+        "description": "Manage collaboration comments"
+      },
+      {
+        "name": "lock_project_comment",
+        "description": "Lock or unlock a comment"
+      },
+      {
+        "name": "set_project_export_preset",
+        "description": "Define export settings"
+      },
+      {
+        "name": "prepare_project_render",
+        "description": "Validate render readiness"
+      },
+      {
+        "name": "plan_project_export",
+        "description": "Plan preview/final/sidecar outputs"
+      },
+      {
+        "name": "render_project",
+        "description": "Render final video with subtitle burn-in"
+      }
+    ]
+  }
+}

@@ -18,6 +18,12 @@ class ProjectToolPostParseGetProjectSummaryMixin:
         report = self.store.validate(project)
 
         payload = self._project_summary_payload(project, project_path)
+        short_video = payload.get("short_video") if isinstance(payload, dict) else {}
+        next_actions = []
+        if isinstance(short_video, dict) and short_video:
+            if not project.subtitles:
+                next_actions.append("transcribe_audio")
+            next_actions.append("prepare_project_render")
 
         return ToolResult(
             ok=report.passed,
@@ -39,8 +45,10 @@ class ProjectToolPostParseGetProjectSummaryMixin:
             state={
                 "project_path": str(Path(project_path)),
                 "timeline_duration": payload["timeline_duration"],
+                "short_video_score": short_video.get("score") if isinstance(short_video, dict) else None,
                 **self._project_counts(project),
             },
             payload=payload,
+            next_actions=next_actions,
             summary=f"Prepared summary for project {project.name}",
         ).to_dict()

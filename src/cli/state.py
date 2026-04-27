@@ -19,6 +19,8 @@ class SessionState:
         self.last_validation: Optional[Dict[str, Any]] = None
         self.last_render_state: Optional[Dict[str, Any]] = None
         self.last_file_path: Optional[str] = None
+        self.last_short_video_score: Optional[float] = None
+        self.last_short_video_diagnosis: list[str] = []
         self.stage_contexts: list[Dict[str, Any]] = []
         self.stage_audit: list[Dict[str, Any]] = []
 
@@ -38,6 +40,8 @@ class SessionState:
         self.last_validation = None
         self.last_render_state = None
         self.last_file_path = None
+        self.last_short_video_score = None
+        self.last_short_video_diagnosis = []
         self.stage_contexts = []
         self.stage_audit = []
 

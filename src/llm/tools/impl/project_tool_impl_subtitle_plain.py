@@ -34,7 +34,9 @@ class ProjectToolSubtitlePlainMixin:
         x = max(0, (width - text_w) // 2)
         y = max(0, (image.height - text_h) // 2)
         if text_h > image.height or text_h < image.height // 2:
-            resize_layers((width, max(text_h + font_size // 2, font_size * 2)))
+            image, draw, bg_draw, text_draw = resize_layers(
+                (width, max(text_h + font_size // 2, font_size * 2))
+            )
             y = max(0, (image.height - text_h) // 2)
         if "background_box" in fx_map:
             self._draw_background_box(bg_draw, image.width, image.height, fx_map["background_box"])

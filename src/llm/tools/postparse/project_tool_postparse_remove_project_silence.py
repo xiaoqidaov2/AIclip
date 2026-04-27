@@ -12,7 +12,7 @@ class ProjectToolPostParseRemoveProjectSilenceMixin:
         project_path: str,
         track_id: Optional[str] = None,
         output_path: Optional[str] = None,
-        padding: float = 0.0,
+        padding: float = 0.12,
     ) -> Dict[str, Any]:
         project, failure = self._load(project_path)
         if failure:
@@ -86,6 +86,7 @@ class ProjectToolPostParseRemoveProjectSilenceMixin:
         project.metadata["audio_track_present"] = any(
             item.kind == "audio" and item.clips for item in project.timeline.tracks
         )
+        self._apply_auto_style_to_subtitles(project)
         project.bump_version()
         saved_path = self.store.save(project, output_path or project_path)
         report = self.store.validate(project)

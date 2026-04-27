@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ...agent_policy import AgentPolicy, load_agent_policy
 from ..tool_registration import ToolRegistration
 from .tool_setup_catalog_skills import build_skill_specs
 from .tool_setup_catalog_tools import build_tool_specs
@@ -15,6 +16,7 @@ class ToolSetup:
         self.registry = ToolRegistration()
         self._docs_dir = Path(__file__).resolve().parents[3] / "resources" / "docs"
         self._skills_dir = Path(__file__).resolve().parents[3] / "resources" / "skills"
+        self._config_dir = Path(__file__).resolve().parents[3] / "resources"
         self._resource_specs = build_resource_specs()
         self._resource_instances: Dict[str, Any] = {}
         self._tool_cache: Dict[str, Any] = {}
@@ -23,6 +25,7 @@ class ToolSetup:
         self._default_skill_name = "project_core"
         self._planner_skill_name = self._default_skill_name
         self._skills, self._default_skill_name = load_skill_overrides(self._skills_dir, self._skills, self._default_skill_name)
+        self._agent_policy: AgentPolicy = load_agent_policy(self._config_dir)
         for spec in self._specs:
             self.registry.register_tool_doc(spec.name, load_doc(self._docs_dir, spec.doc_file))
 
@@ -55,6 +58,10 @@ class ToolSetup:
 
     def get_planner_skill_name(self) -> str:
         return self._planner_skill_name if self._planner_skill_name in self._skills else self._default_skill_name
+
+    def get_agent_role(self, skill_name: Optional[str] = None):
+        resolved_skill = skill_name or self._default_skill_name
+        return self._agent_policy.get_role(resolved_skill)
 
     def _resolve_callable(self, spec: ToolSpec):
         resource = get_resource(self._resource_instances, self._resource_specs, spec.source)
@@ -91,4 +98,13 @@ class ToolSetup:
     def build_system_prompt(self, base_prompt: str, skill_name: Optional[str] = None) -> str:
         skill = self.get_skill(skill_name)
         doc_names = list(dict.fromkeys(skill.doc_names + skill.tool_names))
-        return compose_system_prompt(base_prompt, skill, self.get_documentation(doc_names), load_skill_doc(self._skills_dir, self._skills, skill.name))
+        role = self.get_agent_role(skill.name)
+        resolved_prompt = role.system_prompt or base_prompt
+        return compose_system_prompt(
+            resolved_prompt,
+            skill,
+            self.get_documentation(doc_names),
+            load_skill_doc(self._skills_dir, self._skills, skill.name),
+            role_name=role.role_name,
+            handoff_rules=role.handoff_rules,
+        )

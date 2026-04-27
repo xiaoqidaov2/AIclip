@@ -12,7 +12,6 @@ Do not use this skill for:
 - trimming or timeline edits
 - transcription
 - render/export
-- CapCut draft packaging
 
 Tools:
 - `vision_analyze_media`

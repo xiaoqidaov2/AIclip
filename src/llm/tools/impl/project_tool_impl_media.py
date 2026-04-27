@@ -59,8 +59,10 @@ class ProjectToolMediaMixin:
         if asset.media_type in {"video", "image", "audio"}:
             return asset.media_type
         suffix = asset_path.suffix.lower()
-        if suffix in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}:
+        if suffix in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}:
             return "image"
+        if suffix == ".gif":
+            return "video"
         if suffix in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".wma"}:
             return "audio"
         return "video"
@@ -101,9 +103,25 @@ class ProjectToolMediaMixin:
         duration = media_info.get("duration")
         return float(duration) if isinstance(duration, (int, float)) and float(duration) > 0 else None
 
-    def _transform_video_clip(self, media_clip: Any, clip: Clip) -> Any:
+    def _transform_video_clip(self, media_clip: Any, clip: Clip, asset: Optional[Asset] = None) -> Any:
         transform = dict(clip.transform or {})
         scale = transform.get("scale")
+        metadata = dict(clip.metadata or {})
+        screen_binding = metadata.get("screen_binding") or {}
+        base_size = asset.metadata.get("size") if asset is not None else None
+        base_width = float(base_size[0]) if isinstance(base_size, list) and len(base_size) >= 1 and float(base_size[0]) > 0 else None
+        base_height = float(base_size[1]) if isinstance(base_size, list) and len(base_size) >= 2 and float(base_size[1]) > 0 else None
+        if not isinstance(scale, (int, float)) or float(scale) <= 0:
+            target_width = transform.get("width")
+            if not isinstance(target_width, (int, float)):
+                target_width = screen_binding.get("width")
+            target_height = transform.get("height")
+            if not isinstance(target_height, (int, float)):
+                target_height = screen_binding.get("height")
+            if isinstance(target_width, (int, float)) and base_width:
+                scale = float(target_width) / base_width
+            elif isinstance(target_height, (int, float)) and base_height:
+                scale = float(target_height) / base_height
         if isinstance(scale, (int, float)) and scale > 0:
             media_clip = self._clip_call(media_clip, "resized", float(scale))
         opacity = transform.get("opacity")
@@ -130,14 +148,40 @@ class ProjectToolMediaMixin:
             media_clip = ImageClip(np.array(image))
             opened.append(media_clip)
             media_clip = self._set_clip_duration(media_clip, max(0.01, clip.end - clip.start))
+            effective_end = float(clip.end)
         else:
-            media_clip = self._build_video_clip(asset_path, clip, opened)
-        media_clip = self._set_clip_range(media_clip, float(clip.start), float(clip.end))
-        media_clip = self._transform_video_clip(media_clip, clip)
+            media_clip = self._build_video_clip(asset, asset_path, clip, opened)
+            media_clip = self._cap_overlay_clip_duration(clip, media_clip)
+            effective_end = float(clip.end)
+            if str((clip.metadata or {}).get("role") or "").lower() == "overlay":
+                source_duration = float(getattr(media_clip, "duration", 0.0) or 0.0)
+                if source_duration > 0:
+                    effective_end = min(float(clip.end), float(clip.start) + source_duration)
+        media_clip = self._set_clip_range(media_clip, float(clip.start), effective_end)
+        media_clip = self._transform_video_clip(media_clip, clip, asset=asset)
         return media_clip, opened
 
-    def _build_video_clip(self, asset_path: Path, clip: Clip, opened: list[Any]) -> Any:
-        source = VideoFileClip(str(asset_path))
+    def _cap_overlay_clip_duration(self, clip: Clip, media_clip: Any) -> Any:
+        role = str((clip.metadata or {}).get("role") or "").lower()
+        if role != "overlay":
+            return media_clip
+        target_duration = max(0.01, float(clip.end - clip.start))
+        source_duration = float(getattr(media_clip, "duration", 0.0) or 0.0)
+        if source_duration <= 0:
+            return media_clip
+        cap_duration = min(target_duration, source_duration)
+        if cap_duration <= 0:
+            return media_clip
+        if source_duration > cap_duration:
+            media_clip = self._set_clip_duration(media_clip, cap_duration)
+        return media_clip
+
+    def _build_video_clip(self, asset: Asset, asset_path: Path, clip: Clip, opened: list[Any]) -> Any:
+        video_kwargs: dict[str, Any] = {}
+        if bool(asset.metadata.get("transparent")):
+            video_kwargs["has_mask"] = True
+            video_kwargs["pixel_format"] = "rgba"
+        source = VideoFileClip(str(asset_path), **video_kwargs)
         opened.append(source)
         source_in = float(clip.source_in or 0.0)
         source_duration = float(getattr(source, "duration", clip.end - clip.start) or (clip.end - clip.start))

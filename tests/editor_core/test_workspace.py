@@ -1,1 +1,96 @@
-import jsonfrom pathlib import Pathfrom src.editor_core.workspace import ProjectWorkspace, WorkspaceRegistry, _slugifydef test_slugify_normalizes_name_and_falls_back_when_empty():    assert _slugify("  Hello World  ") == "Hello_World"    assert _slugify("video@cut#1") == "videocut1"    assert _slugify("!!!") == "project"def test_project_workspace_ensure_and_path_helpers(tmp_path):    workspace = ProjectWorkspace(tmp_path / "workspace")    workspace.ensure()    assert workspace.project_file == workspace.root / "project.json"    assert workspace.media_dir.exists()    assert workspace.exports_dir.exists()    assert workspace.cache_dir.exists()    resolved = workspace.resolve_path("media/input.mp4")    assert resolved == (workspace.root / "media/input.mp4").resolve()    inside_storage = workspace.to_storage_path(workspace.root / "media/input.mp4")    assert inside_storage == "media/input.mp4"    external_storage = workspace.to_storage_path(tmp_path / "outside.mp4")    assert Path(external_storage).is_absolute()def test_workspace_registry_load_data_handles_corrupt_registry_file(tmp_path):    registry = WorkspaceRegistry(base_dir=tmp_path)    registry.root.mkdir(parents=True, exist_ok=True)    registry.registry_path.write_text("not json", encoding="utf-8")    data = registry._load_data()    assert data == {"version": 1, "entries": {}}def test_workspace_registry_register_and_find_require_existing_project_file(tmp_path):    registry = WorkspaceRegistry(base_dir=tmp_path)    source = tmp_path / "source.mp4"    source.write_text("video", encoding="utf-8")    workspace = ProjectWorkspace(tmp_path / "projects" / "demo")    workspace.ensure()    registry.register(source, workspace)    assert registry.find(source) is None    workspace.project_file.write_text(        json.dumps({"id": "p", "name": "n"}), encoding="utf-8"    )    found = registry.find(source)    assert found is not None    assert found.root == workspace.rootdef test_workspace_registry_find_or_create_creates_once_then_reuses(tmp_path):    registry = WorkspaceRegistry(base_dir=tmp_path)    source = tmp_path / "source.mp4"    source.write_text("video", encoding="utf-8")    workspace, created = registry.find_or_create(source, project_name="My Demo")    assert created is True    assert workspace.root.exists()    workspace.project_file.write_text(        json.dumps({"id": "p", "name": "n"}), encoding="utf-8"    )    reused, created_again = registry.find_or_create(source, project_name="Ignored")    assert created_again is False    assert reused.root == workspace.root
+import json
+from pathlib import Path
+
+from src.editor_core.workspace import ProjectWorkspace, WorkspaceRegistry, _slugify
+
+
+def test_slugify_normalizes_name_and_falls_back_when_empty():
+    assert _slugify("  Hello World  ") == "Hello_World"
+    assert _slugify("video@cut#1") == "videocut1"
+    assert _slugify("!!!") == "project"
+
+
+def test_project_workspace_ensure_and_path_helpers(tmp_path):
+    workspace = ProjectWorkspace(tmp_path / "workspace")
+
+    workspace.ensure()
+
+    assert workspace.project_file == workspace.root / "project.json"
+    assert workspace.media_dir.exists()
+    assert workspace.exports_dir.exists()
+    assert workspace.cache_dir.exists()
+
+    resolved = workspace.resolve_path("media/input.mp4")
+    assert resolved == (workspace.root / "media/input.mp4").resolve()
+
+    inside_storage = workspace.to_storage_path(workspace.root / "media/input.mp4")
+    assert inside_storage == "media/input.mp4"
+
+    external_storage = workspace.to_storage_path(tmp_path / "outside.mp4")
+    assert Path(external_storage).is_absolute()
+
+
+def test_project_workspace_import_media_copies_external_file(tmp_path):
+    workspace = ProjectWorkspace(tmp_path / "workspace")
+    external = tmp_path / "outside.mp4"
+
+    external.write_bytes(b"video-bytes")
+
+    imported = workspace.import_media(external)
+
+    assert imported == (workspace.media_dir / "outside.mp4").resolve()
+    assert imported.read_bytes() == b"video-bytes"
+
+
+def test_workspace_registry_load_data_handles_corrupt_registry_file(tmp_path):
+    registry = WorkspaceRegistry(base_dir=tmp_path)
+
+    registry.root.mkdir(parents=True, exist_ok=True)
+    registry.registry_path.write_text("not json", encoding="utf-8")
+
+    data = registry._load_data()
+
+    assert data == {"version": 1, "entries": {}}
+
+
+def test_workspace_registry_register_and_find_require_existing_project_file(tmp_path):
+    registry = WorkspaceRegistry(base_dir=tmp_path)
+    source = tmp_path / "source.mp4"
+    workspace = ProjectWorkspace(tmp_path / "projects" / "demo")
+
+    source.write_text("video", encoding="utf-8")
+    workspace.ensure()
+
+    registry.register(source, workspace)
+
+    assert registry.find(source) is None
+
+    workspace.project_file.write_text(
+        json.dumps({"id": "p", "name": "n"}), encoding="utf-8"
+    )
+
+    found = registry.find(source)
+
+    assert found is not None
+    assert found.root == workspace.root
+
+
+def test_workspace_registry_find_or_create_creates_once_then_reuses(tmp_path):
+    registry = WorkspaceRegistry(base_dir=tmp_path)
+    source = tmp_path / "source.mp4"
+
+    source.write_text("video", encoding="utf-8")
+
+    workspace, created = registry.find_or_create(source, project_name="My Demo")
+
+    assert created is True
+    assert workspace.root.exists()
+
+    workspace.project_file.write_text(
+        json.dumps({"id": "p", "name": "n"}), encoding="utf-8"
+    )
+
+    reused, created_again = registry.find_or_create(source, project_name="Ignored")
+
+    assert created_again is False
+    assert reused.root == workspace.root

@@ -45,6 +45,10 @@ class ProjectToolProjectMixin:
         subtitle_languages = sorted(
             {cue.language for cue in project.subtitles if cue.language}
         )
+        short_video_metrics = dict(project.metadata.get("short_video_metrics") or {})
+        metrics_builder = getattr(self, "_project_short_video_metrics", None)
+        if callable(metrics_builder):
+            short_video_metrics = metrics_builder(project)
         return {
             "project_path": str(Path(project_path)),
             "project_id": project.id,
@@ -61,6 +65,7 @@ class ProjectToolProjectMixin:
                 item.kind == "audio" and item.clips for item in project.timeline.tracks
             ),
             "source_media_path": project.metadata.get("source_media_path"),
+            "short_video": short_video_metrics,
             **self._project_counts(project),
         }
 

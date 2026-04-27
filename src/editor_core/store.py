@@ -234,6 +234,78 @@ class ProjectStore:
 
         return workspace.resolve_path(asset_path)
 
+    def import_asset_to_project(
+        self,
+        asset_path: str | Path,
+        project_path: str | Path,
+        *,
+        preferred_name: Optional[str] = None,
+    ) -> str:
+
+        workspace = self.workspace_for_project(project_path)
+
+        imported_path = workspace.import_media(
+            asset_path, preferred_name=preferred_name
+        )
+
+        return workspace.to_storage_path(imported_path)
+
+    def normalize_project_asset_paths(
+        self, project: Project, project_path: str | Path
+    ) -> bool:
+
+        workspace = self.workspace_for_project(project_path)
+
+        workspace.ensure()
+
+        changed = False
+
+        for asset in project.assets:
+
+            if not asset.path:
+
+                continue
+
+            asset_candidate = Path(asset.path)
+
+            if asset_candidate.is_absolute():
+
+                try:
+
+                    normalized = workspace.to_storage_path(
+                        workspace.resolve_path(asset_candidate)
+                    )
+
+                except ValueError:
+
+                    if not asset_candidate.exists():
+
+                        continue
+
+                    normalized = self.import_asset_to_project(
+                        asset_candidate,
+                        project_path,
+                        preferred_name=asset_candidate.name,
+                    )
+
+                if asset.path != normalized:
+
+                    asset.path = normalized
+
+                    changed = True
+
+                continue
+
+            normalized = workspace.to_storage_path(workspace.resolve_path(asset.path))
+
+            if asset.path != normalized:
+
+                asset.path = normalized
+
+                changed = True
+
+        return changed
+
     def find_project_for_media(self, media_path: str | Path) -> Optional[Path]:
 
         workspace = self.registry.find(media_path)

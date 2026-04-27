@@ -90,6 +90,8 @@ class ProjectToolPostParseAddProjectSubtitleMixin:
                     error=result.message,
                 ).to_dict()
 
+            self._apply_auto_style_to_subtitles(project, [subtitle_id])
+
             saved_path = self.store.save(
                 project, output_path or project_path, _already_locked=True
             )

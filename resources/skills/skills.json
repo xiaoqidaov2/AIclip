@@ -60,13 +60,6 @@
       "description": "Inspect image or video content, summarize what is visible, and extract structured observations before editing.",
       "tool_names": ["vision_analyze_media"],
       "keywords": ["vision", "inspect", "analyze", "analyse", "analysis", "image", "video", "media", "ocr", "frame", "scene", "summary", "visual", "recognize", "recognise", "分析", "智能分析", "识别", "观察", "内容分析", "画面", "视频分析", "图片分析"]
-    },
-    {
-      "name": "capcut_finalization",
-      "title": "CapCut Finalization Skill",
-      "description": "Handle post-render CapCut work only: effects, stickers, draft packaging, and CapCut-specific finishing after a rendered video exists.",
-      "tool_names": ["capcut_video_creation"],
-      "keywords": ["capcut", "draft", "sticker", "stickers", "effect", "effects", "post-render", "finalize", "finalise", "finishing", "packaging", "剪映", "草稿", "特效", "贴图", "贴纸", "后期", "封装"]
     }
   ]
 }

@@ -28,12 +28,23 @@ def llm_plan(user_input: str, route: SkillDecision, tool_setup: Any, llm_config:
         skill_catalog = []
         for skill_name in tool_setup.get_skill_names():
             skill = tool_setup.get_skill(skill_name)
-            skill_catalog.append({"name": skill.name, "title": skill.title, "description": skill.description, "tools": skill.tool_names, "keywords": skill.keywords})
+            skill_catalog.append(
+                {
+                    "name": skill.name,
+                    "title": skill.title,
+                    "description": skill.description,
+                    "tools": skill.tool_names,
+                    "keywords": getattr(skill, "keywords", []),
+                }
+            )
         prompt = (
             "Create a structured multi-stage execution plan for the request.\n"
-            "Return JSON only with keys: primary_skill, skills, steps, nudges.\n"
+            "Return JSON only with keys: primary_skill, skills, steps, nudges, clarification.\n"
             "Each step must have: phase, skill_name, reason, prompt, input_focus, allowed_tools, stop_conditions.\n"
             "Valid phases: discovery, plan, execute, compress, nudge.\n"
+            "Add clarification only if required before editing.\n"
+            "Clarification shape: {reason, questions:[{prompt, choices:[{label, description}], free_text_label}]}.\n"
+            "Limit clarification to at most 5 questions and 5 choices per question.\n"
             "Use only the available skill names.\n"
             f"Planner skill: {tool_setup.get_planner_skill_name()}\n"
             f"Route suggestion: {route.skill_name}\n"

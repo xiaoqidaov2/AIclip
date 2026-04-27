@@ -1,11 +1,13 @@
-﻿BUILTIN_COMMANDS: list[tuple[str, str]] = [
+BUILTIN_COMMANDS: list[tuple[str, str]] = [
     ("/help", "Show this help message"),
     ("/exit", "Exit the CLI"),
     ("/quit", "Exit the CLI"),
     ("/clear", "Clear conversation history"),
     ("/verbose", "Toggle verbose output"),
     ("/status", "Show current session state"),
-    ("/plan", "Enable LLM planning mode"),
+    ("/plan <request>", "Preview an execution plan without running it"),
+    ("/run", "Execute the most recent previewed plan"),
+    ("/execute", "Execute the most recent previewed plan"),
 ]
 
 SKILL_COMMANDS: list[tuple[str, str]] = [
@@ -76,6 +78,7 @@ def show_detailed_status(
     history_count: int,
     last_file_path: str | None,
     last_tool_name: str | None,
+    has_pending_plan: bool = False,
 ) -> None:
     routing_mode = f"locked ({locked_skill})" if locked_skill else "auto"
     planner_mode = "llm" if planner_enabled else "heuristic"
@@ -83,6 +86,7 @@ def show_detailed_status(
     print(f"Active skill: {active_skill or 'auto'}")
     print(f"Routing mode: {routing_mode}")
     print(f"Planner mode: {planner_mode}")
+    print(f"Pending plan: {'yes' if has_pending_plan else 'no'}")
     print(f"History messages: {history_count}")
     print(f"Last file: {last_file_path or 'N/A'}")
     print(f"Last tool: {last_tool_name or 'N/A'}")

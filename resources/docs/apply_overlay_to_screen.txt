@@ -1,0 +1,30 @@
+apply_overlay_to_screen
+
+Purpose
+- Add a transparent overlay asset back onto the screen area of a target clip.
+
+Inputs
+- `project_path`
+- `asset_id`
+- `target_clip_id`
+- `overlay_clip_id`
+- `x`
+- `y`
+- `width`: optional
+- `height`: optional
+- `start`: optional
+- `end`: optional
+- `opacity`: optional
+- `track_id`: optional
+- `track_name`: optional
+- `output_path`: optional
+
+Returns
+- updated project snapshot
+- overlay clip insertion result
+
+Notes
+- The clip is written to a dedicated overlay track by default.
+- The clip transform stores the screen placement, opacity, and requested size.
+- When the user specifies a timestamp or duration, pass `start` and `end` explicitly; omitting `start` falls back to the target clip start.
+- When the user specifies sticker/effect size, pass at least one of `width` or `height`; large transparent overlays without an explicit size are auto-capped so they do not fill the frame by default.

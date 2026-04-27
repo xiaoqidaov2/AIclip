@@ -8,6 +8,7 @@ from src.cli.render import CLIRenderer
 from src.cli.state import SessionState
 from src.llm.query_orchestrator import QueryOrchestrator
 from src.llm.skill_router import SkillRouter
+from src.llm.context_compressor import ContextCompressor
 
 
 class CLIAppRuntimeMixin:
@@ -28,6 +29,9 @@ class CLIAppRuntimeMixin:
             llm_config=llm_config,
             enable_llm_plan=enable_llm_plan,
         )
+        self.context_compressor = ContextCompressor(
+            llm_factory=llm_config.create_llm,
+        )
         self.agent = None
         self.renderer = CLIRenderer()
         self.theme = self.renderer.theme
@@ -35,6 +39,8 @@ class CLIAppRuntimeMixin:
         self.history: List[Union[HumanMessage, AIMessage, ToolMessage]] = []
         self._locked_skill: Optional[str] = None
         self._active_skill: Optional[str] = None
+        self._pending_orchestration = None
+        self._pending_input: Optional[str] = None
         if initial_skill:
             self._locked_skill = initial_skill
             self.session_state.active_skill = initial_skill
@@ -125,6 +131,8 @@ class CLIAppRuntimeMixin:
             or self.session_state.active_skill
             or self.tool_setup.get_skill().name
         )
+        if self.agent is not None and self._active_skill == resolved_skill:
+            return
         self._active_skill = resolved_skill
         if skill_name is not None or self.session_state.active_skill is None:
             self.session_state.active_skill = resolved_skill

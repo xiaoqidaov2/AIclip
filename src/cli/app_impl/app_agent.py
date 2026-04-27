@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from src.llm.query_orchestrator import OrchestrationPhase
 
 
-MAX_HISTORY_MESSAGES = 40
+MAX_HISTORY_MESSAGES = 300
 
 
 class CLIAppAgentMixin:
@@ -58,6 +58,7 @@ class CLIAppAgentMixin:
                     self.history = self._trimmed_history()
                 if final_message:
                     print(f"\n{final_message}")
+                self._compress_conversation()
                 return
             except Exception:
                 pass
@@ -75,6 +76,7 @@ class CLIAppAgentMixin:
         }
         self.session_state.add_stage_context({"phase": "execute", "summary": compressed.summary})
         print(self.theme.info(f"[context] compressed: {compressed.summary}"))
+        self._compress_conversation()
 
     def _run_orchestrated_steps(
         self, user_input: str, steps: List[Any], planner_mode: str = "unknown"
@@ -86,6 +88,11 @@ class CLIAppAgentMixin:
             if step.skill_name != self._active_skill:
                 self._refresh_runtime(step.skill_name)
             self.session_state.active_skill = step.skill_name
+            self.session_state.last_route_decision = {
+                **(self.session_state.last_route_decision or {}),
+                "skill_name": step.skill_name,
+                "allowed_tools": list(step.allowed_tools),
+            }
             print(
                 self.theme.info(
                     f"[stage] {index}/{len(steps)} phase={step.phase.value} skill={step.skill_name} reason={step.reason}"
@@ -94,8 +101,21 @@ class CLIAppAgentMixin:
             stage_message = f"{step.prompt}\n\nUser request: {step.input_text}"
             if step.metadata:
                 stage_message += f"\nStage metadata: {json.dumps(step.metadata, ensure_ascii=False)}"
-            self._run_agent(extra_messages=[HumanMessage(content=stage_message)], persist_history=True)
-            compressed = self._compress_execution_context(step.phase)
+            step_failed = False
+            for attempt in range(1, 3):
+                try:
+                    self._run_agent(extra_messages=[HumanMessage(content=stage_message)], persist_history=True)
+                    step_failed = False
+                    break
+                except Exception as e:
+                    step_failed = True
+                    print(self.theme.warn(f"[stage] {index}/{len(steps)} attempt {attempt} failed: {e}"))
+                    if attempt < 2:
+                        stage_message = (
+                            f"The previous attempt encountered an error. Retrying.\n\n"
+                            f"Original request: {step.input_text}"
+                        )
+            compressed = self._compress_execution_context(step.phase, failed=step_failed)
             self.session_state.add_stage_context(
                 {
                     "phase": step.phase.value,
@@ -105,9 +125,14 @@ class CLIAppAgentMixin:
                     "allowed_tools": step.allowed_tools,
                 }
             )
+            if step_failed:
+                print(self.theme.warn(f"[stage] {index}/{len(steps)} failed after retry, continuing to next step"))
+                self.session_state.add_stage_audit(
+                    {"event": "step_failed", "index": index, "skill": step.skill_name, "phase": step.phase.value}
+                )
             print(self.theme.info(f"[context] {step.phase.value} compressed: {compressed.summary}"))
 
-    def _compress_execution_context(self, phase: Any) -> Any:
+    def _compress_execution_context(self, phase: Any, failed: bool = False) -> Any:
         decision = self.session_state.last_decision or {}
         state = decision.get("state", {}) if self.session_state.last_decision else {}
         return self.orchestrator.compress(
@@ -117,6 +142,7 @@ class CLIAppAgentMixin:
                 "operation": self.session_state.last_operation,
                 "code": decision.get("code"),
                 "status": decision.get("status"),
+                "step_failed": failed,
                 "project_path": state.get("project_path"),
                 "output_path": state.get("output_path"),
                 "media_path": state.get("media_path"),
@@ -124,3 +150,17 @@ class CLIAppAgentMixin:
                 "next_actions": decision.get("next_actions", []),
             },
         )
+
+    def _compress_conversation(self) -> None:
+        """Compress conversation history if token limits are exceeded."""
+        compressor = getattr(self, "context_compressor", None)
+        if compressor is None:
+            return
+        try:
+            if compressor.compress(self.history):
+                print(self.theme.info(
+                    f"[compress] conversation: {len(self.history)} msgs, "
+                    f"{compressor.stats['freed_tokens']:,} total freed"
+                ))
+        except Exception as exc:
+            print(self.theme.warn(f"[compress] failed: {exc}"))

@@ -13,9 +13,12 @@ Decision order
 Output rules
 - `message` and `summary` are display text only.
 - Prefer `code`, `status`, `state`, `render_state`, `validation`, and `next_actions`.
+- If `next_actions` contains a concrete follow-up inside the active skill, continue instead of ending the task early.
 - If `decision.render_state.ready` is false, do not render.
+- If `decision.render_state.ready` is true and the request is to finish or optimize a video, continue through render preparation and final render when possible.
 - If the request needs subtitles and no subtitle source exists, use `transcribe_audio` first.
 - If the request is to cut silence, use `remove_project_silence` after subtitle cues exist.
+- If the request is about better short-video effect, hook strength, Douyin pacing, or stronger retention, inspect `payload.short_video` from `get_project_summary`.
 
 Project scope
 - The current core edits timeline, assets, subtitles, audio stems, effects, comments, metadata, and export presets.

@@ -52,22 +52,29 @@ class ProjectToolPostParseTranscribeAudioMixin:
 
                     continue
 
-                cues.append(
-                    SubtitleCue(
-                        id=f"sub_{index:04d}",
-                        start=float(segment.start),
-                        end=float(segment.end),
-                        text=text,
+                expanded_segments = self._expand_transcribed_segment(
+                    float(segment.start), float(segment.end), text
+                )
+                for sub_index, (cue_start, cue_end, cue_text) in enumerate(
+                    expanded_segments, start=1
+                ):
+                    cue = SubtitleCue(
+                        id=f"sub_{index:04d}" if len(expanded_segments) == 1 else f"sub_{index:04d}_{sub_index}",
+                        start=cue_start,
+                        end=cue_end,
+                        text=cue_text,
                         language=language or getattr(info, "language", None),
-                        position="bottom",
+                        position="middle",
                         margin_bottom=0.0,
                         offset_y=0.0,
                         metadata={
                             "source": "transcribe_audio",
                             "segment_index": index,
+                            "expanded_segment_index": sub_index,
                         },
                     )
-                )
+                    self._apply_auto_style_to_cue(project, cue)
+                    cues.append(cue)
 
         except Exception as exc:
 
@@ -85,6 +92,8 @@ class ProjectToolPostParseTranscribeAudioMixin:
         else:
 
             project.subtitles.extend(cues)
+
+        self._apply_auto_style_to_subtitles(project)
 
         project.metadata["subtitle_source_present"] = bool(project.subtitles)
 

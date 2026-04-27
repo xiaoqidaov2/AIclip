@@ -31,7 +31,6 @@ class Main:
             return self._agent_cache[skill_name]
         tools = self.tool_setup.get_skill_tools(skill_name)
         system_prompt = self.tool_setup.build_system_prompt(
-            "You are AiClip's project-core editing assistant.\n"
             "Use tool outputs as the source of truth.",
             skill_name=skill_name,
         )
@@ -79,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--skill",
-        help="Start with a locked skill, e.g. project_core, asset_discovery, vision_inspection, capcut_finalization, full.",
+        help="Start with a locked skill, e.g. project_core, asset_discovery, vision_inspection, full.",
     )
 
     return parser

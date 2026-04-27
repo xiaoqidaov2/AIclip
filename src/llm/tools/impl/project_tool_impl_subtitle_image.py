@@ -43,7 +43,9 @@ class ProjectToolSubtitleImageMixin(
                 glow_draws[radius] = ImageDraw.Draw(glow_layers[radius])
             return glow_draws[radius]
 
-        def resize_layers(new_size: tuple[int, int]) -> None:
+        def resize_layers(
+            new_size: tuple[int, int]
+        ) -> tuple[Image.Image, ImageDraw.ImageDraw, ImageDraw.ImageDraw, ImageDraw.ImageDraw]:
             nonlocal image, bg_layer, bg_draw, text_layer, text_draw, draw
             image = Image.new("RGBA", new_size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(image)
@@ -56,6 +58,7 @@ class ProjectToolSubtitleImageMixin(
                 new_img.paste(old_img, (0, 0))
                 glow_layers[radius] = new_img
                 glow_draws[radius] = ImageDraw.Draw(new_img)
+            return image, draw, bg_draw, text_draw
 
         if spans:
             self._render_spanned_subtitle(

@@ -1,11 +1,13 @@
-﻿from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MethodType
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import main as main_module
 from src.cli.app import CLIApp
+from src.llm.query_orchestrator import OrchestrationPhase, PlannedStep
 
 
 @dataclass
@@ -23,6 +25,17 @@ class FakeToolSetup:
                 name="project_core",
                 title="Project Core",
                 description="default skill",
+                tool_names=[
+                    "get_project_summary",
+                    "prepare_project_render",
+                    "render_project",
+                ],
+            ),
+            "vision_inspection": FakeSkill(
+                name="vision_inspection",
+                title="Vision Inspection",
+                description="vision skill",
+                tool_names=["vision_analyze_media"],
             ),
         }
 
@@ -34,6 +47,7 @@ class FakeToolSetup:
 
     def get_skill_tools(self, skill_name: str | None = None) -> list[object]:
         return []
+
 
 class FakeLLMConfig:
     def create_llm(self) -> object:
@@ -56,9 +70,7 @@ class FakeCLIAppForMain:
         self.run_calls += 1
 
 
-def build_app(
-    agent_calls: list[str],
-) -> CLIApp:
+def build_app(agent_calls: list[str]) -> CLIApp:
     tool_setup = FakeToolSetup()
 
     def agent_factory(skill_name: str | None) -> object:
@@ -79,7 +91,7 @@ def test_help_does_not_initialize_runtime(capsys) -> None:
     app.run_once("/help")
 
     captured = capsys.readouterr().out
-    assert "/plan" in captured
+    assert "/plan <request>" in captured
     assert "[skill] loading" not in captured
     assert agent_calls == []
 
@@ -98,38 +110,35 @@ def test_skills_does_not_initialize_runtime(capsys) -> None:
     assert agent_calls == []
 
 
-def test_plan_initializes_planner_skill_on_demand(capsys) -> None:
+def test_plan_requires_request_text(capsys) -> None:
     agent_calls: list[str] = []
     app = build_app(agent_calls)
 
     app.run_once("/plan")
 
     captured = capsys.readouterr().out
-    assert "LLM planning mode enabled" in captured
+    assert "Usage: /plan <request>" in captured
     assert agent_calls == []
 
 
-def test_status_shows_routing_and_planner_mode(capsys) -> None:
+def test_status_shows_pending_plan_flag(capsys) -> None:
     agent_calls: list[str] = []
     app = build_app(agent_calls)
-
-    app.run_once("/plan")
-    capsys.readouterr()
 
     app.run_once("/status")
 
     captured = capsys.readouterr().out
     assert "Active skill: project_core" in captured
     assert "Routing mode: auto" in captured
-    assert "Planner mode: llm" in captured
+    assert "Planner mode: heuristic" in captured
+    assert "Pending plan: no" in captured
 
 
-def test_clear_does_not_initialize_runtime_and_resets_planner_mode(capsys) -> None:
+def test_clear_resets_pending_plan(capsys) -> None:
     agent_calls: list[str] = []
     app = build_app(agent_calls)
-
-    app.run_once("/plan")
-    capsys.readouterr()
+    app._pending_orchestration = object()
+    app._pending_input = "plan me"
 
     app.run_once("/clear")
     cleared = capsys.readouterr().out
@@ -137,11 +146,8 @@ def test_clear_does_not_initialize_runtime_and_resets_planner_mode(capsys) -> No
     app.run_once("/status")
     status = capsys.readouterr().out
 
-    assert "[skill] loading" not in cleared
-    assert agent_calls == []
     assert "Conversation history cleared." in cleared
-    assert "Routing mode: auto" in status
-    assert "Planner mode: heuristic" in status
+    assert "Pending plan: no" in status
 
 
 def test_main_reuses_cli_app_across_multiple_run_calls(monkeypatch) -> None:
@@ -149,8 +155,123 @@ def test_main_reuses_cli_app_across_multiple_run_calls(monkeypatch) -> None:
     monkeypatch.setattr(main_module, "CLIApp", FakeCLIAppForMain)
 
     app = main_module.Main()
-    app.run(command="/plan")
+    app.run(command="/plan hello")
     app.run(command="/status")
 
     assert len(FakeCLIAppForMain.instances) == 1
-    assert FakeCLIAppForMain.instances[0].commands == ["/plan", "/status"]
+    assert FakeCLIAppForMain.instances[0].commands == ["/plan hello", "/status"]
+
+
+def test_normal_input_executes_immediately(capsys) -> None:
+    agent_calls: list[str] = []
+    app = build_app(agent_calls)
+
+    def fake_plan(user_input, locked_skill=None, session_context=None):
+        class Result:
+            def __init__(self) -> None:
+                self.route = type(
+                    "Route",
+                    (),
+                    {
+                        "skill_name": "project_core",
+                        "locked": False,
+                        "matched_terms": [],
+                        "score": 0,
+                        "reason": "fake route",
+                        "confidence": 0.6,
+                    },
+                )()
+                self.steps = [
+                    PlannedStep(
+                        phase=OrchestrationPhase.EXECUTE,
+                        skill_name="project_core",
+                        reason="planned",
+                        prompt="Handle the request.",
+                        input_text="smart edit",
+                        allowed_tools=["get_project_summary"],
+                    )
+                ]
+                self.nudges = []
+                self.planner_mode = "heuristic"
+                self.clarification = None
+
+        return Result()
+
+    def fake_run_agent(self, extra_messages=None, persist_history=True) -> None:
+        self.session_state.last_operation = "get_project_summary"
+        self.session_state.last_decision = {
+            "operation": "get_project_summary",
+            "code": "project.summary.ready",
+            "status": "ok",
+            "state": {"project_path": "tmp/project.json"},
+            "next_actions": [],
+        }
+
+    app.orchestrator.plan = fake_plan
+    app._run_agent = MethodType(fake_run_agent, app)
+
+    app.run_once("smart edit")
+    output = capsys.readouterr().out
+
+    assert "[pipeline] executing" in output
+    assert "[pipeline] done" in output
+    assert app._pending_orchestration is None
+
+
+def test_plan_preview_requires_run_for_execution(capsys) -> None:
+    agent_calls: list[str] = []
+    app = build_app(agent_calls)
+
+    def fake_plan(user_input, locked_skill=None, session_context=None):
+        class Result:
+            def __init__(self) -> None:
+                self.route = type(
+                    "Route",
+                    (),
+                    {
+                        "skill_name": "project_core",
+                        "locked": False,
+                        "matched_terms": [],
+                        "score": 0,
+                        "reason": "fake route",
+                        "confidence": 0.6,
+                    },
+                )()
+                self.steps = [
+                    PlannedStep(
+                        phase=OrchestrationPhase.EXECUTE,
+                        skill_name="project_core",
+                        reason="planned",
+                        prompt="Handle the request.",
+                        input_text="smart edit",
+                        allowed_tools=["get_project_summary"],
+                    )
+                ]
+                self.nudges = []
+                self.planner_mode = "llm"
+                self.clarification = None
+
+        return Result()
+
+    app.orchestrator.plan = fake_plan
+
+    app.run_once("/plan smart edit")
+    preview = capsys.readouterr().out
+    assert "[pipeline] plan ready: llm" in preview
+    assert app._pending_orchestration is not None
+
+    def fake_run_agent(self, extra_messages=None, persist_history=True) -> None:
+        self.session_state.last_operation = "get_project_summary"
+        self.session_state.last_decision = {
+            "operation": "get_project_summary",
+            "code": "project.summary.ready",
+            "status": "ok",
+            "state": {"project_path": "tmp/project.json"},
+            "next_actions": [],
+        }
+
+    app._run_agent = MethodType(fake_run_agent, app)
+    app.run_once("/run")
+    second = capsys.readouterr().out
+    assert "[pipeline] executing pending plan" in second
+    assert app._pending_orchestration is None

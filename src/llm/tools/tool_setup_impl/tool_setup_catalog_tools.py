@@ -15,8 +15,11 @@ def build_tool_specs() -> list[ToolSpec]:
         ToolSpec("set_project_metadata", "Project Metadata Tool", "Update project metadata in the unified project file.", "project", "set_project_metadata", "set_project_metadata.txt"),
         ToolSpec("trim_project_clip", "Project Clip Trim Tool", "Trim a clip inside a project file and save the updated project.", "project", "trim_project_clip", "trim_project_clip.txt"),
         ToolSpec("set_project_clip_speed", "Project Clip Speed Tool", "Update clip speed inside a project file.", "project", "set_project_clip_speed", "set_project_clip_speed.txt"),
+        ToolSpec("set_project_clip_transform", "Project Clip Transform Tool", "Update clip position, scale, opacity, and transform data inside a project file.", "project", "set_project_clip_transform", "set_project_clip_transform.txt"),
         ToolSpec("add_project_asset", "Project Asset Tool", "Add a media asset into a project file.", "project", "add_project_asset", "add_project_asset.txt"),
         ToolSpec("add_project_clip", "Project Clip Insert Tool", "Insert a clip that references an existing asset onto a timeline track at a specific time range.", "project", "add_project_clip", "add_project_clip.txt"),
+        ToolSpec("generate_animejs_overlay_asset", "Anime.js Overlay Asset Tool", "Store Anime.js source and register a compact transparent sticker or effect overlay asset in the project.", "project", "generate_animejs_overlay_asset", "generate_animejs_overlay_asset.txt"),
+        ToolSpec("apply_overlay_to_screen", "Overlay Screen Placement Tool", "Place a transparent overlay asset onto the timeline at a specific time and screen position over a target clip.", "project", "apply_overlay_to_screen", "apply_overlay_to_screen.txt"),
         ToolSpec("add_project_subtitle", "Project Subtitle Add Tool", "Add a subtitle cue into a project file, including spans, position, and margins.", "project", "add_project_subtitle", "add_project_subtitle.txt"),
         ToolSpec("update_project_subtitle", "Project Subtitle Update Tool", "Update a subtitle cue inside a project file, including spans, position, and margins.", "project", "update_project_subtitle", "update_project_subtitle.txt"),
         ToolSpec("batch_update_project_subtitles", "Project Subtitle Batch Styling Tool", "Update many subtitle cues in one call, including positions, spans, and multiple subtitle effects per cue.", "project", "batch_update_project_subtitles", "batch_update_project_subtitles.txt"),
@@ -44,5 +47,4 @@ def build_tool_specs() -> list[ToolSpec]:
         ToolSpec("vision_analyze_media", "Vision Analyze Media Tool", "Analyze an image or video with an OpenAI-compatible vision model.", "vision", "vision_analyze_media", "vision_analyze_media.txt"),
         ToolSpec("search_net_asset", "Network Asset Search Tool", "Search online stock libraries for free-to-use assets.", "net_asset", "search_net_asset", "search_net_asset.txt"),
         ToolSpec("download_net_asset", "Network Asset Download Tool", "Download a stock asset from a URL returned by search_net_asset.", "net_asset", "download_net_asset", "download_net_asset.txt"),
-        ToolSpec("capcut_video_creation", "CapCut Video Creation Tool", "Create videos with ASR file, auto-add effects and stickers.", "capcut", "create_video_from_asr", "capcut_video_creation.txt"),
     ]

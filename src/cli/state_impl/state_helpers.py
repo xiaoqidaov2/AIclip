@@ -20,6 +20,29 @@ def update_from_tool_state(state: Any, tool_name: str, result: Any, tool_args: O
         state.last_render_state = normalized_result["render_state"]
     local_state = normalized_result.get("state")
     if isinstance(local_state, dict):
+        score = local_state.get("short_video_score")
+        if score not in (None, ""):
+            try:
+                state.last_short_video_score = float(score)
+            except (TypeError, ValueError):
+                pass
+        diagnosis = local_state.get("short_video_diagnosis")
+        if isinstance(diagnosis, list):
+            state.last_short_video_diagnosis = [str(item) for item in diagnosis if str(item).strip()]
+    payload = normalized_result.get("payload")
+    if isinstance(payload, dict):
+        short_video = payload.get("short_video")
+        if isinstance(short_video, dict):
+            score = short_video.get("score")
+            if score not in (None, ""):
+                try:
+                    state.last_short_video_score = float(score)
+                except (TypeError, ValueError):
+                    pass
+            diagnosis = short_video.get("diagnosis")
+            if isinstance(diagnosis, list):
+                state.last_short_video_diagnosis = [str(item) for item in diagnosis if str(item).strip()]
+    if isinstance(local_state, dict):
         for key in ("project_path", "output_path", "media_path", "preview_path", "final_path", "subtitle_path"):
             value = local_state.get(key)
             if isinstance(value, str):
@@ -90,6 +113,10 @@ def build_context_prompt(state: Any) -> str:
         lines.append(f"- render_ready: {ready}")
         if blockers:
             lines.append(f"- render_blockers: {compact_value(blockers)}")
+    if state.last_short_video_score is not None:
+        lines.append(f"- short_video_score: {state.last_short_video_score:.1f}")
+    if state.last_short_video_diagnosis:
+        lines.append(f"- short_video_diagnosis: {compact_value(state.last_short_video_diagnosis)}")
     if state.last_file_path:
         lines.append(f"- current_file: {state.last_file_path}")
     if state.stage_contexts:

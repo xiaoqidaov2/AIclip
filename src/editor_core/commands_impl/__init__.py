@@ -1,7 +1,7 @@
 from .commands_audio import AddAudioStemCommand, RemoveAudioStemCommand, UpdateAudioStemCommand
 from .commands_base import Command, CommandResult
 from .commands_clip_add import AddClipCommand
-from .commands_clip_edit import SetClipSpeedCommand, TrimClipCommand
+from .commands_clip_edit import SetClipSpeedCommand, SetClipTransformCommand, TrimClipCommand
 from .commands_comments import AddCommentCommand, LockCommentCommand, RemoveCommentCommand, UpdateCommentCommand
 from .commands_effects import AddEffectCommand, RemoveEffectCommand, UpdateEffectCommand
 from .commands_export import SetExportPresetCommand
@@ -28,6 +28,7 @@ __all__ = [
     "RemoveSubtitleEffectCommand",
     "RemoveSubtitleSpanCommand",
     "SetClipSpeedCommand",
+    "SetClipTransformCommand",
     "SetExportPresetCommand",
     "SetProjectMetadataCommand",
     "SetSubtitleEffectCommand",

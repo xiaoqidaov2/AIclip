@@ -13,6 +13,9 @@ import json
 import os
 
 
+import shutil
+
+
 from pathlib import Path
 
 
@@ -120,6 +123,54 @@ class ProjectWorkspace:
         except ValueError:
 
             return str(candidate)
+
+    def import_media(
+        self, source_path: str | Path, preferred_name: Optional[str] = None
+    ) -> Path:
+
+        source = Path(source_path).resolve()
+
+        if not source.exists():
+
+            raise FileNotFoundError(f"Media file not found: {source}")
+
+        self.ensure()
+
+        workspace_root = self.root.resolve()
+
+        try:
+
+            source.relative_to(workspace_root)
+
+            return source
+
+        except ValueError:
+
+            pass
+
+        source_name = Path(preferred_name or source.name).name or source.name
+
+        stem = Path(source_name).stem or _slugify(source.stem)
+
+        suffix = Path(source_name).suffix or source.suffix
+
+        candidate = self.media_dir / f"{stem}{suffix}"
+
+        counter = 1
+
+        while candidate.exists():
+
+            if candidate.resolve() == source:
+
+                return candidate.resolve()
+
+            candidate = self.media_dir / f"{stem}_{counter:02d}{suffix}"
+
+            counter += 1
+
+        shutil.copy2(source, candidate)
+
+        return candidate.resolve()
 
     def default_export_path(self, stem_hint: str = "final") -> Path:
 

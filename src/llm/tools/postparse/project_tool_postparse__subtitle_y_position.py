@@ -7,6 +7,20 @@ class ProjectToolPostParseSubtitleYPositionMixin:
     def __getattr__(self, name: str) -> Any:
         raise AttributeError(name)
 
+    def _cue_faces(
+        self,
+        cue: SubtitleCue,
+        project: Optional[Any],
+    ) -> list[dict[str, Any]]:
+        if not project or "detected_faces" not in project.metadata:
+            return []
+        faces: list[dict[str, Any]] = []
+        for frame in project.metadata["detected_faces"]:
+            ts = frame["timestamp"]
+            if cue.start - 0.5 <= ts <= cue.end + 0.5:
+                faces.extend(frame.get("faces", []))
+        return faces
+
     def _subtitle_y_position(
         self,
         cue: SubtitleCue,
@@ -43,6 +57,8 @@ class ProjectToolPostParseSubtitleYPositionMixin:
             else max(24, int(video_height * 0.06))
         )
 
+        cue_faces = self._cue_faces(cue, project)
+
         if position == "top":
 
             y = top_margin
@@ -50,30 +66,44 @@ class ProjectToolPostParseSubtitleYPositionMixin:
         elif position == "middle":
 
             y = max(0, (video_height - image_height) // 2)
+            if cue_faces:
+                cue_top = y
+                cue_bottom = y + image_height
+                overlaps_face = any(
+                    cue_bottom > int(face["y"])
+                    and cue_top < int(face["y"]) + int(face["h"])
+                    for face in cue_faces
+                )
+                if overlaps_face:
+                    min_face_top = min(int(face["y"]) for face in cue_faces)
+                    max_face_bottom = max(
+                        int(face["y"]) + int(face["h"]) for face in cue_faces
+                    )
+                    safe_gap = 20
+                    candidates: list[int] = []
+                    above_y = min_face_top - image_height - safe_gap
+                    below_y = max_face_bottom + safe_gap
+                    if above_y >= top_margin:
+                        candidates.append(above_y)
+                    if below_y <= max(0, video_height - image_height):
+                        candidates.append(below_y)
+                    if candidates:
+                        y = min(candidates, key=lambda item: abs(item - cue_top))
 
         elif (
             position == "below_faces"
-            and project
-            and "detected_faces" in project.metadata
+            and cue_faces
         ):
 
             max_face_y = 0
 
-            for frame in project.metadata["detected_faces"]:
+            for face in cue_faces:
 
-                ts = frame["timestamp"]
+                bottom_edge = face["y"] + face["h"]
 
-                # Check frames near the cue's active time
+                if bottom_edge > max_face_y:
 
-                if cue.start - 0.5 <= ts <= cue.end + 0.5:
-
-                    for face in frame["faces"]:
-
-                        bottom_edge = face["y"] + face["h"]
-
-                        if bottom_edge > max_face_y:
-
-                            max_face_y = bottom_edge
+                    max_face_y = bottom_edge
 
             if max_face_y > 0:
 

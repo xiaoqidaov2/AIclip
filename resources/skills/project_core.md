@@ -14,3 +14,4 @@ Prefer these tools in order:
 - `render_project`
 
 Only use `batch_update_project_subtitles` when changing multiple subtitle cues at once.
+If the user wants a stronger Douyin or short-video feel, treat hook strength, pacing, subtitle readability, and dead-air reduction as higher priority than decorative effects.

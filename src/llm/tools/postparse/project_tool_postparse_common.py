@@ -2,13 +2,14 @@ from __future__ import annotations
 
 # flake8: noqa: F401
 
+import hashlib
 import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from faster_whisper import WhisperModel  # type: ignore[import-untyped]
-from PIL import ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 from moviepy import AudioFileClip, VideoFileClip  # type: ignore[import-untyped]
 
 from src.editor_core.commands import (
@@ -27,6 +28,7 @@ from src.editor_core.commands import (
     RemoveSubtitleEffectCommand,
     RemoveSubtitleSpanCommand,
     SetClipSpeedCommand,
+    SetClipTransformCommand,
     SetExportPresetCommand,
     SetProjectMetadataCommand,
     SetSubtitleEffectCommand,

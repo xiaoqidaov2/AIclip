@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(pip list *)",
+      "Bash(npm list *)",
+      "Bash(code --list-extensions)",
+      "Bash(pip3 list *)",
+      "Bash(find /usr /opt /home ~/.local /Applications \"C:\\\\Program Files\" \"C:\\\\Users\" -maxdepth 3 -iname \"*opencode*\" -type f)",
+      "Read(//c/Users/admin/**)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

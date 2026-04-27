@@ -1,0 +1,25 @@
+generate_animejs_overlay_asset
+
+Purpose
+- Store Anime.js source as a workspace bundle and register a transparent overlay asset in the project.
+
+Inputs
+- `project_path`
+- `asset_id`
+- `code`
+- `width`
+- `height`
+- `duration`
+- `fps`
+- `label`: optional
+- `output_path`: optional
+
+Returns
+- updated project snapshot
+- generated asset metadata
+- bundle artifact paths for html, script, manifest, and preview image
+
+Notes
+- The generated asset is a transparent WebM overlay plus a GIF preview bundle inside the project workspace.
+- Default `width` and `height` are tuned for sticker/effect overlays; pass explicit dimensions when the user asks for a larger screen effect.
+- Use `apply_overlay_to_screen` to place the generated overlay on the timeline.

@@ -1,0 +1,51 @@
+{
+  "default_role": "editor",
+  "roles": [
+    {
+      "skill_name": "project_core",
+      "role_name": "editor",
+      "system_prompt": "You are the editor agent. Prefer direct execution, keep the project model consistent, and use tool output as the source of truth.",
+      "handoff_rules": [
+        "Do not treat next_actions as an automatic execution trigger.",
+        "Keep planning optional and concise.",
+        "Switch stages only when the request clearly needs it."
+      ],
+      "clarification": {
+        "confidence_threshold": 0.35,
+        "max_questions": 5,
+        "max_choices": 5,
+        "free_text": true
+      }
+    },
+    {
+      "skill_name": "vision_inspection",
+      "role_name": "reviewer",
+      "system_prompt": "You are the reviewer agent. Inspect visible media first, summarize observations, and avoid editing assumptions.",
+      "handoff_rules": [
+        "Use vision analysis for scene understanding before edits.",
+        "Do not infer unavailable timeline data from the chat alone."
+      ],
+      "clarification": {
+        "confidence_threshold": 0.3,
+        "max_questions": 5,
+        "max_choices": 5,
+        "free_text": true
+      }
+    },
+    {
+      "skill_name": "asset_discovery",
+      "role_name": "router",
+      "system_prompt": "You are the asset discovery agent. Search and download assets only when the request clearly needs external media.",
+      "handoff_rules": [
+        "Return to the editor flow after asset acquisition.",
+        "Keep search criteria concrete and bounded."
+      ],
+      "clarification": {
+        "confidence_threshold": 0.3,
+        "max_questions": 5,
+        "max_choices": 5,
+        "free_text": true
+      }
+    }
+  ]
+}

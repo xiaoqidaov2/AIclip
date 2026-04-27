@@ -133,7 +133,6 @@ class SkillRouter:
                 "Routing policy:\n"
                 "- Use project_core for editing, subtitles, timing, render, validation, and general project work.\n"
                 "- Use vision_inspection for image/video understanding, analysis, OCR, scene reading, or content inspection.\n"
-                "- Use capcut_finalization only for explicit CapCut/剪映 draft packaging, stickers, effects, or other post-render finishing.\n"
                 f"Available skills: {json.dumps(skill_catalog, ensure_ascii=False)}\n"
                 f"Default skill: {fallback}\n"
                 "Return JSON only with keys: skill_name, reason.\n"

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from ..clarification import ClarificationBundle
 from ..skill_router import SkillDecision
 
 
@@ -42,5 +43,6 @@ class OrchestrationResult:
     steps: List[PlannedStep]
     compressed_contexts: List[CompressedContext] = field(default_factory=list)
     nudges: List[str] = field(default_factory=list)
+    clarification: Optional[ClarificationBundle] = None
     planner_mode: str = "heuristic"
     raw_plan: Dict[str, Any] = field(default_factory=dict)

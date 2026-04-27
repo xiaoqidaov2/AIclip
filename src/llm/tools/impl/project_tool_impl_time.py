@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -21,17 +22,36 @@ class ProjectToolTimeMixin:
         project_path: Optional[str] = None,
     ) -> Optional[Path]:
         anchor = project_path or project.metadata.get("project_path") or "project.json"
-        if media_path:
-            candidate = self.store.resolve_asset_path(media_path, anchor)
-            if candidate.exists():
-                return candidate
-        source_media = project.metadata.get("source_media_path")
-        if isinstance(source_media, str):
-            candidate = self.store.resolve_asset_path(source_media, anchor)
-            if candidate.exists():
-                return candidate
+
+        candidates: list[str] = []
+
+        def add_candidate(value: Any) -> None:
+            if isinstance(value, str):
+                cleaned = value.strip()
+                if cleaned:
+                    candidates.append(cleaned)
+
+        add_candidate(media_path)
+        add_candidate(project.metadata.get("workspace_media_path"))
         for asset in project.assets:
-            candidate = self.store.resolve_asset_path(asset.path, anchor)
+            add_candidate(asset.metadata.get("workspace_media_path"))
+            add_candidate(asset.path)
+        add_candidate(project.metadata.get("source_media_path"))
+        for asset in project.assets:
+            add_candidate(asset.metadata.get("source_media_path"))
+
+        seen: set[str] = set()
+        for raw_candidate in candidates:
+            key = os.path.normcase(raw_candidate) if os.name == "nt" else raw_candidate
+            if key in seen:
+                continue
+            seen.add(key)
+
+            try:
+                candidate = self.store.resolve_asset_path(raw_candidate, anchor)
+            except ValueError:
+                continue
+
             if candidate.exists():
                 return candidate
         return None

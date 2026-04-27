@@ -1,0 +1,23 @@
+set_project_clip_transform
+
+Purpose
+- Update the visible placement and basic transform values of a clip in the timeline.
+
+Inputs
+- `project_path`
+- `clip_id`
+- `x`: optional
+- `y`: optional
+- `scale`: optional
+- `opacity`: optional
+- `track_id`: optional
+- `transform`: optional object for additional keys
+- `output_path`: optional
+
+Returns
+- updated project snapshot
+- transform change details
+
+Notes
+- The current renderer actively applies `x`, `y`, `scale`, and `opacity`.
+- Extra transform keys can still be stored for future render upgrades.

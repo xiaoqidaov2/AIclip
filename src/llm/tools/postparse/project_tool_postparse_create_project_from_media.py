@@ -50,14 +50,31 @@ class ProjectToolPostParseCreateProjectFromMediaMixin:
             track_id,
             clip_id,
         )
-        report = self.store.validate(project)
         if project_path:
             target_path = Path(project_path).resolve()
         else:
             target_path, _ = self.store.find_or_create_project_for_media(
                 source_path, project_name=project_name or source_path.stem
             )
+        try:
+            imported_media_path = self.store.import_asset_to_project(
+                source_path,
+                target_path,
+                preferred_name=source_path.name,
+            )
+        except Exception as exc:
+            return self._failure(
+                "create_project_from_media",
+                f"Failed to import media into project workspace: {exc}",
+                code="media.import_failed",
+                path=str(target_path.parent / "media"),
+            )
+        if project.assets:
+            project.assets[0].path = imported_media_path
+            project.assets[0].metadata["workspace_media_path"] = imported_media_path
         project.metadata["project_path"] = str(target_path)
+        project.metadata["workspace_media_path"] = imported_media_path
+        report = self.store.validate(project)
         try:
             saved_path = self.store.save(project, target_path)
             self.store.register_media_project(source_path, saved_path)

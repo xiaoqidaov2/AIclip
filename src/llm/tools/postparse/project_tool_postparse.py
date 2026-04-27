@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..project_tool_render import ProjectToolRenderMixin
 from .project_tool_postparse_create_helpers import ProjectToolPostParseCreateHelpersMixin
+from .project_tool_postparse_polish_helpers import ProjectToolPostParsePolishHelpersMixin
 from .project_tool_postparse_silence_helpers import ProjectToolPostParseSilenceHelpersMixin
 from .project_tool_postparse__parse_color import ProjectToolPostParseParseColorMixin
 from .project_tool_postparse__draw_background_box import ProjectToolPostParseDrawBackgroundBoxMixin
@@ -46,17 +47,21 @@ from .project_tool_postparse_plan_project_export import ProjectToolPostParsePlan
 from .project_tool_postparse_add_project_effect import ProjectToolPostParseAddProjectEffectMixin
 from .project_tool_postparse_update_project_effect import ProjectToolPostParseUpdateProjectEffectMixin
 from .project_tool_postparse_remove_project_effect import ProjectToolPostParseRemoveProjectEffectMixin
+from .project_tool_postparse_generate_animejs_overlay_asset import ProjectToolPostParseGenerateAnimejsOverlayAssetMixin
+from .project_tool_postparse_apply_overlay_to_screen import ProjectToolPostParseApplyOverlayToScreenMixin
 from .project_tool_postparse_add_project_comment import ProjectToolPostParseAddProjectCommentMixin
 from .project_tool_postparse_update_project_comment import ProjectToolPostParseUpdateProjectCommentMixin
 from .project_tool_postparse_remove_project_comment import ProjectToolPostParseRemoveProjectCommentMixin
 from .project_tool_postparse_lock_project_comment import ProjectToolPostParseLockProjectCommentMixin
 from .project_tool_postparse_prepare_project_render import ProjectToolPostParsePrepareProjectRenderMixin
 from .project_tool_postparse_set_project_metadata import ProjectToolPostParseSetProjectMetadataMixin
+from .project_tool_postparse_set_project_clip_transform import ProjectToolPostParseSetProjectClipTransformMixin
 
 
 class ProjectToolPostParseMixin(
     ProjectToolRenderMixin,
     ProjectToolPostParseCreateHelpersMixin,
+    ProjectToolPostParsePolishHelpersMixin,
     ProjectToolPostParseSilenceHelpersMixin,
     ProjectToolPostParseParseColorMixin,
     ProjectToolPostParseDrawBackgroundBoxMixin,
@@ -101,11 +106,14 @@ class ProjectToolPostParseMixin(
     ProjectToolPostParseAddProjectEffectMixin,
     ProjectToolPostParseUpdateProjectEffectMixin,
     ProjectToolPostParseRemoveProjectEffectMixin,
+    ProjectToolPostParseGenerateAnimejsOverlayAssetMixin,
+    ProjectToolPostParseApplyOverlayToScreenMixin,
     ProjectToolPostParseAddProjectCommentMixin,
     ProjectToolPostParseUpdateProjectCommentMixin,
     ProjectToolPostParseRemoveProjectCommentMixin,
     ProjectToolPostParseLockProjectCommentMixin,
     ProjectToolPostParsePrepareProjectRenderMixin,
     ProjectToolPostParseSetProjectMetadataMixin,
+    ProjectToolPostParseSetProjectClipTransformMixin,
 ):
     pass
