@@ -213,6 +213,8 @@ class ProjectToolPostParseGenerateAnimejsOverlayAssetMixin:
                 ["node", str(script_path), json.dumps(args)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout_sec,
                 cwd=str(project_root),
             )
