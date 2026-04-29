@@ -49,7 +49,7 @@ def test_generate_animejs_overlay_asset_registers_generated_preview(tmp_path):
     assert asset.metadata["visible_preview"] is True
     assert asset.metadata["animation_format"] == "webm"
     assert asset.metadata["preview_format"] == "gif"
-    assert asset.metadata["render_backend"] == "python_fallback"
+    assert asset.metadata["render_backend"] in ("playwright", "python_fallback")
     assert asset.metadata["style_signature"]
     render_path = tool.store.resolve_asset_path(asset.path, project_path)
     assert render_path.exists()
@@ -100,6 +100,47 @@ def test_generate_animejs_overlay_asset_varies_preview_by_code(tmp_path):
     assert first_hash != second_hash
 
 
+def test_generate_animejs_overlay_asset_uses_playwright_for_visible_animation(tmp_path):
+    tool = _make_tool(tmp_path)
+    project_path = tmp_path / "project.json"
+    project = Project(id="project-1", name="Overlay Demo")
+    tool.store.save(project, project_path)
+
+    # Code that creates a visible red square and animates its position
+    visible_code = (
+        "const el = document.createElement('div'); "
+        "el.style.width = '40px'; el.style.height = '40px'; "
+        "el.style.backgroundColor = '#ff0000'; "
+        "el.style.position = 'absolute'; el.style.left = '0px'; el.style.top = '20px'; "
+        "document.getElementById('stage').appendChild(el); "
+        "anime({ targets: el, left: ['0px', '100px'], duration: 2000, easing: 'linear' });"
+    )
+
+    result = tool.generate_animejs_overlay_asset(
+        project_path=str(project_path),
+        asset_id="anime_overlay_visible",
+        code=visible_code,
+        width=320,
+        height=180,
+        duration=1.0,
+        fps=10,
+    )
+
+    saved = tool.store.load(project_path)
+    asset = saved.find_asset("anime_overlay_visible")
+
+    assert result["code"] == "asset.generated"
+    assert asset is not None
+    assert asset.metadata["render_backend"] == "playwright"
+    preview_path = tool.store.resolve_asset_path(asset.metadata["animejs_bundle"]["preview_path"], project_path)
+    assert preview_path.exists()
+    preview = Image.open(preview_path)
+    assert getattr(preview, "is_animated", False) is True
+    preview = preview.convert("RGBA")
+    alpha = __import__("numpy").array(preview)[:, :, 3]
+    assert int(alpha.max()) > 0
+
+
 def test_apply_overlay_to_screen_adds_overlay_clip_with_transform(tmp_path):
     tool = _make_tool(tmp_path)
     project_path = tmp_path / "project.json"
@@ -147,8 +188,10 @@ def test_apply_overlay_to_screen_adds_overlay_clip_with_transform(tmp_path):
     assert result["code"] == "overlay.applied"
     assert overlay_track is not None
     assert overlay_clip is not None
+    # x is forced to 0.5 (centered): 0.5 * 640 - 400/2 = 120
     assert overlay_clip.transform["x"] == 120.0
-    assert overlay_clip.transform["y"] == 220.0
+    # y is forced below subtitles / bottom: 360 - (100*2) - 24 = 136
+    assert overlay_clip.transform["y"] == 136.0
     assert overlay_clip.transform["scale"] == 2.0
     assert overlay_clip.metadata["role"] == "overlay"
 
@@ -503,3 +546,105 @@ def test_overlay_video_clip_is_capped_to_source_duration(tmp_path):
 
     assert media_clip.start == 10.0
     assert media_clip.end == 13.17
+
+
+def test_normalize_overlay_position_centers_on_anchor(tmp_path):
+    """Normalized coordinates should center the overlay on the anchor point."""
+    tool = _make_tool(tmp_path)
+    project_path = tmp_path / "project.json"
+    project = Project(id="project-1", name="Coord Demo")
+    project.metadata["size"] = [1000, 1000]
+    tool.store.save(project, project_path)
+
+    # 200x100 overlay at normalized center (0.5, 0.5) -> should be at (400, 450)
+    x, y = tool._normalize_overlay_position(project, 0.5, 0.5, 200.0, 100.0)
+    assert x == 400
+    assert y == 450
+
+
+def test_normalize_overlay_position_clamps_to_canvas_bounds(tmp_path):
+    """Normalized coordinates near the edge must not push the overlay off-screen."""
+    tool = _make_tool(tmp_path)
+    project_path = tmp_path / "project.json"
+    project = Project(id="project-1", name="Coord Demo")
+    project.metadata["size"] = [1000, 1000]
+    tool.store.save(project, project_path)
+
+    # 300x200 overlay at normalized right-bottom (1.0, 1.0) -> clamped to (700, 800)
+    x, y = tool._normalize_overlay_position(project, 1.0, 1.0, 300.0, 200.0)
+    assert x == 700
+    assert y == 800
+
+    # Same overlay at normalized (0.95, 0.95) -> raw would be 850, 850, clamped same
+    x2, y2 = tool._normalize_overlay_position(project, 0.95, 0.95, 300.0, 200.0)
+    assert x2 == 700
+    assert y2 == 800
+
+
+def test_normalize_overlay_position_int_one_is_pixel_not_normalized(tmp_path):
+    """Integer x=1 must be treated as absolute pixel 1, not normalized right edge."""
+    tool = _make_tool(tmp_path)
+    project_path = tmp_path / "project.json"
+    project = Project(id="project-1", name="Coord Demo")
+    project.metadata["size"] = [1000, 1000]
+    tool.store.save(project, project_path)
+
+    # int(1) -> pixel coordinate 1
+    x, y = tool._normalize_overlay_position(project, 1, 1, 100.0, 50.0)
+    assert x == 1
+    assert y == 1
+
+    # float(1.0) -> normalized right edge, clamped to canvas - overlay size
+    x2, y2 = tool._normalize_overlay_position(project, 1.0, 1.0, 100.0, 50.0)
+    assert x2 == 900
+    assert y2 == 950
+
+
+def test_apply_overlay_int_one_pixel_coordinates(tmp_path):
+    """End-to-end: passing x=1 (int) must place overlay at pixel (1, 1)."""
+    tool = _make_tool(tmp_path)
+    project_path = tmp_path / "project.json"
+    workspace = tool.store.workspace_for_project(project_path)
+    workspace.ensure()
+
+    base_image = workspace.media_dir / "base.png"
+    overlay_image = workspace.media_dir / "overlay.png"
+    Image.new("RGBA", (640, 360), (255, 0, 0, 255)).save(base_image)
+    Image.new("RGBA", (200, 100), (0, 255, 0, 128)).save(overlay_image)
+
+    project = Project(
+        id="project-1",
+        name="Overlay Demo",
+        assets=[
+            Asset(id="base_asset", path="media/base.png", media_type="image", metadata={"size": [640, 360]}),
+            Asset(id="overlay_asset", path="media/overlay.png", media_type="image", metadata={"size": [200, 100], "transparent": True}),
+        ],
+        timeline=Timeline(
+            tracks=[
+                Track(
+                    id="v1",
+                    kind="video",
+                    clips=[Clip(id="base_clip", asset_id="base_asset", start=0.0, end=5.0)],
+                )
+            ]
+        ),
+    )
+    tool.store.save(project, project_path)
+
+    tool.apply_overlay_to_screen(
+        project_path=str(project_path),
+        asset_id="overlay_asset",
+        target_clip_id="base_clip",
+        overlay_clip_id="overlay_clip_1",
+        x=1,
+        y=1,
+    )
+
+    saved = tool.store.load(project_path)
+    overlay_clip = saved.find_clip("overlay_clip_1")
+    assert overlay_clip is not None
+    # Placement is now restricted: centered horizontally, below subtitles / bottom
+    # x = 0.5 * 640 - 200/2 = 220
+    assert overlay_clip.transform["x"] == 220.0
+    # y = 360 - 100 - 24 = 236
+    assert overlay_clip.transform["y"] == 236.0
