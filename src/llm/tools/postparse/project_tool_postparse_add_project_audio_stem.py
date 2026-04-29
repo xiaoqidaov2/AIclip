@@ -17,65 +17,66 @@ class ProjectToolPostParseAddProjectAudioStemMixin:
         output_path: Optional[str] = None,
     ) -> Dict[str, Any]:
 
-        project, failure = self._load(project_path)
+        with self.store.project_lock(project_path):
+            project, failure = self._load(project_path)
 
-        if failure:
+            if failure:
 
-            return failure
+                return failure
 
-        command = AddAudioStemCommand(
-            AudioStem(
-                id=stem_id,
-                role=role,
-                path=asset_path,
-                track_id=track_id,
+            command = AddAudioStemCommand(
+                AudioStem(
+                    id=stem_id,
+                    role=role,
+                    path=asset_path,
+                    track_id=track_id,
+                )
             )
-        )
 
-        result = command.execute(project)
+            result = command.execute(project)
 
-        if not result.ok:
+            if not result.ok:
+
+                return ToolResult(
+                    ok=False,
+                    status="error",
+                    code=result.code,
+                    message=result.message,
+                    operation="add_project_audio_stem",
+                    project_id=project.id,
+                    project_version=project.version,
+                    validation=result.validation,
+                    render_state=RenderState(
+                        ready=False, blockers=list(result.validation.errors)
+                    ),
+                    state=result.state,
+                    summary=result.message,
+                    error=result.message,
+                ).to_dict()
+
+            saved_path = self.store.save(project, output_path or project_path)
+
+            report = self.store.validate(project)
 
             return ToolResult(
-                ok=False,
-                status="error",
-                code=result.code,
-                message=result.message,
+                ok=report.passed,
+                status="ok" if report.passed else "warn",
+                code="audio_stem.added",
+                message="Audio stem added",
                 operation="add_project_audio_stem",
                 project_id=project.id,
                 project_version=project.version,
-                validation=result.validation,
-                render_state=RenderState(
-                    ready=False, blockers=list(result.validation.errors)
+                changes=result.changes,
+                validation=ValidationSnapshot(
+                    passed=report.passed,
+                    warnings=[issue.message for issue in report.warnings],
+                    errors=[issue.message for issue in report.errors],
                 ),
-                state=result.state,
-                summary=result.message,
-                error=result.message,
+                render_state=RenderState(
+                    ready=report.passed, blockers=[issue.code for issue in report.errors]
+                ),
+                artifacts=[ArtifactRef(type="project", path=str(saved_path))],
+                state={**result.state, "project_path": str(saved_path)},
+                payload=self._project_delta_payload(project, project_path),
+                summary=f"Added audio stem {stem_id}",
             ).to_dict()
-
-        saved_path = self.store.save(project, output_path or project_path)
-
-        report = self.store.validate(project)
-
-        return ToolResult(
-            ok=report.passed,
-            status="ok" if report.passed else "warn",
-            code="audio_stem.added",
-            message="Audio stem added",
-            operation="add_project_audio_stem",
-            project_id=project.id,
-            project_version=project.version,
-            changes=result.changes,
-            validation=ValidationSnapshot(
-                passed=report.passed,
-                warnings=[issue.message for issue in report.warnings],
-                errors=[issue.message for issue in report.errors],
-            ),
-            render_state=RenderState(
-                ready=report.passed, blockers=[issue.code for issue in report.errors]
-            ),
-            artifacts=[ArtifactRef(type="project", path=str(saved_path))],
-            state={**result.state, "project_path": str(saved_path)},
-            payload=project.to_dict(),
-            summary=f"Added audio stem {stem_id}",
-        ).to_dict()

@@ -76,7 +76,7 @@ class ProjectToolPostParseRemoveProjectSubtitleSpanMixin:
                 "subtitle_id": subtitle_id,
                 "span_id": span_id,
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             summary=f"Removed subtitle span {span_id}",
         ).to_dict()
 

@@ -13,7 +13,7 @@ class ProjectToolPostParseSearchProjectSubtitlesMixin:
         query: str = "",
         speaker: Optional[str] = None,
         language: Optional[str] = None,
-        limit: int = 50,
+        limit: int = 20,
     ) -> Dict[str, Any]:
 
         project, failure = self._load(project_path)
@@ -94,10 +94,6 @@ class ProjectToolPostParseSearchProjectSubtitlesMixin:
                 "subtitle_source_present": bool(project.subtitles),
             },
             payload={
-                "project_path": str(Path(project_path)),
-                "query": query,
-                "speaker": speaker,
-                "language": language,
                 "matches": matches,
             },
             summary=f"Found {len(matches)} subtitle matches",

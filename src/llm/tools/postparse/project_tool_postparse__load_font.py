@@ -112,3 +112,94 @@ class ProjectToolPostParseLoadFontMixin:
                 continue
 
         return ImageFont.load_default()
+
+    def _load_fallback_font(self, font_size: int):
+        """Load a fallback font with broad CJK coverage for per-glyph fallback.
+
+
+
+        Skips the primary bundled font (WenYue) and prefers system fonts
+
+        that have full traditional + simplified Chinese coverage.
+
+
+
+        """
+
+        fonts_dir = Path(__file__).resolve().parents[4] / "resources" / "fonts"
+
+        candidates = []
+
+        # Prefer system fonts with broad CJK coverage first
+
+        windows_font_candidates = [
+            Path(r"C:\Windows\Fonts\msyh.ttc"),  # Microsoft YaHei
+            Path(r"C:\Windows\Fonts\msjh.ttc"),  # Microsoft JhengHei (traditional)
+            Path(r"C:\Windows\Fonts\simhei.ttf"),  # SimHei
+            Path(r"C:\Windows\Fonts\simsun.ttc"),  # SimSun
+        ]
+
+        for candidate in windows_font_candidates:
+            if candidate.exists():
+                candidates.append(candidate)
+
+        # Then bundled fonts (skip WenYue - it's the primary that may lack glyphs)
+
+        if fonts_dir.exists():
+            bundled = [
+                fonts_dir / "NotoSansCJK-Regular.ttc",
+                fonts_dir / "simhei.ttf",
+                fonts_dir / "simsun.ttc",
+            ]
+            for candidate in bundled:
+                if candidate.exists() and candidate not in candidates:
+                    candidates.append(candidate)
+
+        for candidate in candidates:
+            try:
+                return ImageFont.truetype(str(candidate), font_size)
+            except Exception:
+                continue
+
+        return None
+
+    def _font_has_glyph(self, font: Any, ch: str) -> bool:
+        """Check whether *font* contains a usable glyph for *ch*.
+
+
+
+        Compares the rendered bbox of *ch* against the .notdef (missing
+
+        glyph) bbox.  If they are identical the character is missing.
+
+
+
+        """
+
+        try:
+            char_bbox = font.getbbox(ch)
+            # Render a known-missing character to get the .notdef reference bbox
+            notdef_bbox = font.getbbox("\uffff")
+            return char_bbox != notdef_bbox
+        except Exception:
+            return True
+
+    def _render_char_with_fallback(
+        self,
+        primary_font: Any,
+        fallback_font: Any,
+        ch: str,
+    ) -> Any:
+        """Return the font that can render *ch*, preferring *primary_font*.
+
+
+
+        Falls back to *fallback_font* if the primary lacks the glyph.
+
+
+
+        """
+
+        if fallback_font is not None and not self._font_has_glyph(primary_font, ch):
+            return fallback_font
+        return primary_font

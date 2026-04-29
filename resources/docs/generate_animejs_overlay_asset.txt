@@ -23,3 +23,6 @@ Notes
 - The generated asset is a transparent WebM overlay plus a GIF preview bundle inside the project workspace.
 - Default `width` and `height` are tuned for sticker/effect overlays; pass explicit dimensions when the user asks for a larger screen effect.
 - Use `apply_overlay_to_screen` to place the generated overlay on the timeline.
+- The `label` must accurately describe the visual effect actually implemented by the `code`. Do not write a label that promises shapes, colors, or animations that the code does not produce. The label is shown to the user as the description of what was generated, so any mismatch between label and code will appear as a bug.
+- When writing the Anime.js `code`, use explicit color values (hex like `#FF6B35` or rgb like `rgb(255,100,50)`) and descriptive element names or comments so the renderer can extract the intended style from the code itself.
+- Supported visual concepts in the renderer include: rings/orbits, particles/dots, horizontal bars/lines, cards/boxes/rectangles, corner pops/bursts, triangles, pulses, and glows. If you use shapes or animations outside these concepts, the preview may not match the code.

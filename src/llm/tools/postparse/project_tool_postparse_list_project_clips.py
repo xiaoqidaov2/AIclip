@@ -15,7 +15,7 @@ class ProjectToolPostParseListProjectClipsMixin:
         asset_id: Optional[str] = None,
         min_duration: Optional[float] = None,
         max_duration: Optional[float] = None,
-        limit: int = 100,
+        limit: int = 30,
     ) -> Dict[str, Any]:
 
         project, failure = self._load(project_path)
@@ -101,14 +101,6 @@ class ProjectToolPostParseListProjectClipsMixin:
                 "match_count": len(matches),
             },
             payload={
-                "project_path": str(Path(project_path)),
-                "filters": {
-                    "track_id": track_id,
-                    "track_kind": track_kind,
-                    "asset_id": asset_id,
-                    "min_duration": min_duration,
-                    "max_duration": max_duration,
-                },
                 "clips": matches,
             },
             summary=f"Found {len(matches)} clips",

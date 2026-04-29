@@ -91,6 +91,6 @@ class ProjectToolPostParseRemoveProjectSubtitleEffectMixin:
                 "project_path": str(saved_path),
                 "subtitle_id": subtitle_id,
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             summary=f"Removed subtitle effect(s) from cue {subtitle_id}",
         ).to_dict()

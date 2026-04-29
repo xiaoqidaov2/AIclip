@@ -67,7 +67,7 @@ class ProjectToolPostParseSilenceHelpersMixin:
             render_state=RenderState(ready=report.passed, blockers=[issue.code for issue in report.errors]),
             artifacts=[ArtifactRef(type="project", path=str(saved_path))],
             state={"project_path": str(saved_path), "track_id": track.id, "subtitle_source_present": bool(project.subtitles), "audio_track_present": any(item.kind == "audio" and item.clips for item in project.timeline.tracks), "subtitle_count": len(project.subtitles), "segment_count": segment_count, "timeline_duration": output_cursor},
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, str(saved_path), include_tracks=True),
             next_actions=["prepare_project_render"],
             summary=f"Removed silence with {segment_count} retained segments",
         ).to_dict()

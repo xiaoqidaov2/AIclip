@@ -103,6 +103,6 @@ class ProjectToolPostParseAddProjectSubtitleSpanMixin:
                 "project_path": str(saved_path),
                 "subtitle_id": subtitle_id,
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             summary=f"Added subtitle span {result.changes[0].id if result.changes else span.id}",
         ).to_dict()

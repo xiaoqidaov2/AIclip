@@ -92,12 +92,16 @@ class CLIRenderer:
             except Exception as exc:
                 self.clear_status()
                 error_str = str(exc).lower()
-                is_retryable = "429" in error_str or "rate limit" in error_str or "tpm limit" in error_str or ("null value for" in error_str and "choices" in error_str)
+                is_rate_limit = "429" in error_str or "rate limit" in error_str or "tpm limit" in error_str
+                is_server_error = "502" in error_str or "bad gateway" in error_str or "503" in error_str or "service unavailable" in error_str or "504" in error_str or "gateway timeout" in error_str
+                is_empty_response = "null value for" in error_str and "choices" in error_str
+                is_retryable = is_rate_limit or is_server_error or is_empty_response
                 if is_retryable and callable(stream_iterator_provider):
                     consecutive_failures = 0 if made_progress else consecutive_failures
                     consecutive_failures += 1
                     delay = base_delay * (2 ** (consecutive_failures - 1))
-                    print(f"\n{self.theme.warn('[rate]')} 429 / rate limit. {delay}s 后重试 (连续失败 {consecutive_failures}/{max_consecutive_failures})", flush=True)
+                    retry_reason = "网关错误" if is_server_error else "429 / rate limit"
+                    print(f"\n{self.theme.warn('[retry]')} {retry_reason}. {delay}s 后重试 (连续失败 {consecutive_failures}/{max_consecutive_failures})", flush=True)
                     time.sleep(delay)
                     continue
                 print(f"\n{self.theme.error('[stream]')} {exc}")

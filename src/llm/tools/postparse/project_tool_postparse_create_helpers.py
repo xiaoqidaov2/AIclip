@@ -46,7 +46,7 @@ class ProjectToolPostParseCreateHelpersMixin:
                 "reused_existing_project": True,
                 **self._project_counts(existing_project),
             },
-            payload=existing_project.to_dict(),
+            payload=self._project_delta_payload(existing_project, str(existing_project_path), include_tracks=True, include_short_video=True),
             summary=f"Reused existing project {existing_project.name}",
         ).to_dict()
 
@@ -172,6 +172,6 @@ class ProjectToolPostParseCreateHelpersMixin:
                 "audio_track_present": media_info["has_audio"],
                 **self._project_counts(project),
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, str(saved_path), include_tracks=True, include_short_video=True),
             summary=f"Created project for {source_path.name}",
         ).to_dict()

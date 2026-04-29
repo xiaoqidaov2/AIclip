@@ -145,8 +145,8 @@ class ContextCompressor:
     def __init__(
         self,
         llm_factory: Optional[Callable[[], Any]] = None,
-        soft_limit: int = 70000,
-        hard_limit: int = 90000,
+        soft_limit: int = 40000,
+        hard_limit: int = 55000,
         target_ratio: float = 0.45,
         min_messages: int = 8,
         keep_last: int = 8,

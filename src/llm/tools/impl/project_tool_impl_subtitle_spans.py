@@ -32,6 +32,7 @@ class ProjectToolSubtitleSpansMixin:
         fx_map: Dict[str, Dict[str, Any]],
         resize_layers: Any,
         get_glow_draw: Any,
+        fallback_font: Any = None,
     ) -> None:
         full_text = self._sanitize_text(text)
         default_style = {
@@ -81,10 +82,10 @@ class ProjectToolSubtitleSpansMixin:
         full_idx = 0
         for line in wrapped_lines:
             start_y = self._draw_spanned_line(
-                draw, text_draw, get_glow_draw, width, font, font_size, color, line, char_styles, full_idx, start_y
+                draw, text_draw, get_glow_draw, width, font, font_size, color, line, char_styles, full_idx, start_y, fallback_font
             )
             full_idx += len(line)
-            while full_idx < len(full_text) and full_text[full_idx] == " ":
+            while full_idx < len(full_text) and full_text[full_idx] in (" ", "\n"):
                 full_idx += 1
 
     def _draw_spanned_line(
@@ -100,6 +101,7 @@ class ProjectToolSubtitleSpansMixin:
         char_styles: List[Dict[str, Any]],
         full_idx: int,
         start_y: int,
+        fallback_font: Any = None,
     ) -> int:
         line_bbox = draw.textbbox((0, 0), line, font=font)
         cx = int(max(0, (width - (line_bbox[2] - line_bbox[0])) // 2))
@@ -107,7 +109,7 @@ class ProjectToolSubtitleSpansMixin:
         i = 0
         while i < len(line):
             seg_style, seg_text, i = self._segment_for_line(line, char_styles, full_idx, i, color)
-            cx = self._draw_styled_segment(draw, text_draw, get_glow_draw, font, font_size, cx, cy, seg_text, seg_style)
+            cx = self._draw_styled_segment(draw, text_draw, get_glow_draw, font, font_size, cx, cy, seg_text, seg_style, fallback_font)
         sample_bbox = draw.textbbox((0, 0), "Ag", font=font)
         return int(start_y + (sample_bbox[3] - sample_bbox[1]) + 6)
 
@@ -140,10 +142,25 @@ class ProjectToolSubtitleSpansMixin:
         cy: int,
         seg_text: str,
         seg_style: Dict[str, Any],
+        fallback_font: Any = None,
     ) -> int:
         outline_p = cast(Optional[Dict[str, Any]], seg_style["outline"])
         shadow = outline_p.get("color", "black") if outline_p is not None else "black"
         offsets = self._default_outline_offsets(int(outline_p.get("width", 2)) if outline_p else 2)
+
+        # Check if any char in the segment needs fallback
+        needs_fallback = (
+            fallback_font is not None
+            and any(not self._font_has_glyph(font, ch) for ch in seg_text if ch != " ")
+        )
+
+        if needs_fallback:
+            # Render char-by-char with per-glyph font fallback
+            return self._draw_segment_char_by_char(
+                draw, text_draw, get_glow_draw, font, font_size, cx, cy,
+                seg_text, seg_style, fallback_font
+            )
+
         for dx, dy in offsets:
             text_draw.text((cx + dx, cy + dy), seg_text, font=font, fill=shadow)
         fill_offsets = [(0, 0)] + ([(1, 0), (0, 1)] if seg_style.get("bold") else [])
@@ -159,3 +176,53 @@ class ProjectToolSubtitleSpansMixin:
             seg_width = int(draw.textlength(seg_text, font=font))
             text_draw.line([(cx, underline_y), (cx + max(1, seg_width), underline_y)], fill=text_fill, width=2 if seg_style.get("bold") else 1)
         return cx + int(draw.textlength(seg_text, font=font))
+
+    def _draw_segment_char_by_char(
+        self,
+        draw: ImageDraw.ImageDraw,
+        text_draw: ImageDraw.ImageDraw,
+        get_glow_draw: Any,
+        font: Any,
+        font_size: int,
+        cx: int,
+        cy: int,
+        seg_text: str,
+        seg_style: Dict[str, Any],
+        fallback_font: Any,
+    ) -> int:
+        """Render a segment char-by-char, switching to fallback font for missing glyphs."""
+
+        outline_p = cast(Optional[Dict[str, Any]], seg_style["outline"])
+        shadow = outline_p.get("color", "black") if outline_p is not None else "black"
+        offsets = self._default_outline_offsets(int(outline_p.get("width", 2)) if outline_p else 2)
+        fill_offsets = [(0, 0)] + ([(1, 0), (0, 1)] if seg_style.get("bold") else [])
+        text_fill = cast(Optional[str | float | tuple[int, ...]], seg_style["color"])
+
+        pos_x = cx
+        for ch in seg_text:
+            eff_font = self._render_char_with_fallback(font, fallback_font, ch)
+            # Outline
+            for dx, dy in offsets:
+                text_draw.text((pos_x + dx, cy + dy), ch, font=eff_font, fill=shadow)
+            # Fill
+            for dx, dy in fill_offsets:
+                text_draw.text((pos_x + dx, cy + dy), ch, font=eff_font, fill=text_fill)
+            # Glow
+            glow_p = cast(Optional[Dict[str, Any]], seg_style["glow"])
+            if glow_p:
+                gr, gg, gb, ga = self._parse_color(glow_p.get("color", "white"), 255)
+                get_glow_draw(int(glow_p.get("radius", 4))).text(
+                    (pos_x, cy), ch, font=eff_font, fill=(gr, gg, gb, ga)
+                )
+            # Underline
+            if seg_style.get("underline"):
+                underline_y = cy + (eff_font.size if hasattr(eff_font, "size") else font_size) + 1
+                ch_width = int(draw.textlength(ch, font=eff_font))
+                text_draw.line(
+                    [(pos_x, underline_y), (pos_x + max(1, ch_width), underline_y)],
+                    fill=text_fill,
+                    width=2 if seg_style.get("bold") else 1,
+                )
+            pos_x += int(draw.textlength(ch, font=eff_font))
+
+        return pos_x

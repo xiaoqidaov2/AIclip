@@ -44,6 +44,6 @@ class ProjectToolPostParseLoadProjectMixin:
                 ),
                 **self._project_counts(project),
             },
-            payload=project.to_dict(),
+            payload=self._project_detail_payload(project, project_path),
             summary=f"Loaded project {project.name}",
         ).to_dict()

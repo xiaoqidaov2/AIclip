@@ -34,6 +34,7 @@ class ProjectToolSubtitleImageMixin(
         text_draw = ImageDraw.Draw(text_layer)
         draw = ImageDraw.Draw(image)
         font = self._load_font(font_path, font_size)
+        fallback_font = self._load_fallback_font(font_size)
         glow_layers: Dict[int, Image.Image] = {}
         glow_draws: Dict[int, ImageDraw.ImageDraw] = {}
 
@@ -75,6 +76,7 @@ class ProjectToolSubtitleImageMixin(
                 fx_map,
                 resize_layers,
                 get_glow_draw,
+                fallback_font,
             )
         else:
             self._render_plain_subtitle(
@@ -90,6 +92,7 @@ class ProjectToolSubtitleImageMixin(
                 fx_map,
                 resize_layers,
                 get_glow_draw,
+                fallback_font,
             )
         final_image = bg_layer
         for radius, glow_image in glow_layers.items():

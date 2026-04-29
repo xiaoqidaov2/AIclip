@@ -70,6 +70,6 @@ class ProjectToolPostParseRemoveProjectSubtitleMixin:
             ),
             artifacts=[ArtifactRef(type="project", path=str(saved_path))],
             state={**result.state, "project_path": str(saved_path)},
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             summary=f"Removed subtitle cue {subtitle_id}",
         ).to_dict()

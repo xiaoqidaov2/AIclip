@@ -84,7 +84,7 @@ class ProjectToolPostParsePlanProjectExportMixin:
                 "final_path": str(final_path),
                 "sidecar_path": str(sidecar_path),
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             next_actions=(
                 ["fix_project", "revalidate"]
                 if not render_ready

@@ -39,11 +39,18 @@ class ProjectToolRenderPipelineMixin:
         try:
             canvas_width, canvas_height, fps = self._project_canvas(project, project_path)
             timeline_duration = max(float(project.timeline.duration or 0.0), max(float(item.end) for track in render_tracks for item in track.clips))
+            # Separate base clips from overlay clips for correct z-ordering
+            base_clips: list[Any] = []
+            overlay_clips: list[Any] = []
             for track in render_tracks:
                 for clip in sorted(track.clips, key=lambda item: (item.start, item.end, item.id)):
                     media_clip, opened = self._build_timeline_video_clip(project, clip, project_path)
-                    rendered_clips.append(media_clip)
+                    if str((clip.metadata or {}).get("role", "")).lower() == "overlay":
+                        overlay_clips.append(media_clip)
+                    else:
+                        base_clips.append(media_clip)
                     opened_media.extend(opened)
+            rendered_clips = base_clips + overlay_clips
             if not rendered_clips:
                 return self._failure("render_project", "No renderable clips were found on the timeline", code="timeline.clip.missing", path=str(Path(project_path)))
             base_video = self._set_clip_duration(CompositeVideoClip(rendered_clips, size=(canvas_width, canvas_height)), timeline_duration)
@@ -110,4 +117,4 @@ class ProjectToolRenderPipelineMixin:
                 if callable(close):
                     close()
         report = self.store.validate(project)
-        return ToolResult(ok=report.passed, status="ok" if report.passed else "warn", code="render.completed", message="Project rendered", operation="render_project", project_id=project.id, project_version=project.version, validation=ValidationSnapshot(passed=report.passed, warnings=[issue.message for issue in report.warnings], errors=[issue.message for issue in report.errors]), render_state=RenderState(ready=report.passed, blockers=[issue.code for issue in report.errors], final_path=str(target_output)), artifacts=[ArtifactRef(type="video", path=str(target_output)), ArtifactRef(type="project", path=str(Path(project_path)))], state={"project_path": str(Path(project_path)), "final_path": str(target_output)}, payload=project.to_dict(), summary=f"Rendered project to {target_output}").to_dict()
+        return ToolResult(ok=report.passed, status="ok" if report.passed else "warn", code="render.completed", message="Project rendered", operation="render_project", project_id=project.id, project_version=project.version, validation=ValidationSnapshot(passed=report.passed, warnings=[issue.message for issue in report.warnings], errors=[issue.message for issue in report.errors]), render_state=RenderState(ready=report.passed, blockers=[issue.code for issue in report.errors], final_path=str(target_output)), artifacts=[ArtifactRef(type="video", path=str(target_output)), ArtifactRef(type="project", path=str(Path(project_path)))], state={"project_path": str(Path(project_path)), "final_path": str(target_output)}, payload=self._project_summary_payload(project, project_path), summary=f"Rendered project to {target_output}").to_dict()

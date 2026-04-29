@@ -66,29 +66,65 @@ class ToolResult:
     error: Optional[str] = None
     timestamp: str = dataclass_field(default_factory=utc_now)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, *, compact: bool = True) -> Dict[str, Any]:
         data = asdict(self)
-        data["summary"] = self.summary or self.message
-        data["content"] = self.content
-        if not data.get("decision"):
-            data["decision"] = {
-                "operation": self.operation,
-                "code": self.code,
-                "status": self.status,
-                "ok": self.ok,
-                "project_id": self.project_id,
-                "project_version": self.project_version,
-                "validation": asdict(self.validation),
-                "render_state": asdict(self.render_state),
-                "state": dict(self.state),
-                "next_actions": list(self.next_actions),
-            }
-        if isinstance(self.payload, dict):
-            for key, value in self.payload.items():
-                data.setdefault(key, value)
-        elif self.payload is not None and "content" not in data:
-            data["content"] = self.payload
+        if not compact:
+            data["summary"] = self.summary or self.message
+            data["content"] = self.content
+            if not data.get("decision"):
+                data["decision"] = {
+                    "ok": self.ok,
+                    "next_actions": list(self.next_actions),
+                }
+            return data
+
+        # --- compact mode: strip low-value / redundant fields ---------------
+        # Omit empty optional fields
+        for key in ("entity", "content", "error"):
+            if not data.get(key):
+                del data[key]
+
+        # Omit empty changes list
+        if not data.get("changes"):
+            del data["changes"]
+
+        # validation: omit if passed with no warnings/errors
+        v = data.get("validation")
+        if v and v.get("passed") and not v.get("warnings") and not v.get("errors"):
+            del data["validation"]
+
+        # render_state: omit if ready with no blockers and no paths
+        r = data.get("render_state")
+        if (r and r.get("ready") and not r.get("blockers")
+                and not r.get("preview_path") and not r.get("final_path")):
+            del data["render_state"]
+
+        # decision is redundant with ok + next_actions
+        del data["decision"]
+
+        # summary: omit when identical to message or empty
+        summary_val = self.summary or self.message
+        if summary_val == data.get("message"):
+            del data["summary"]
+        else:
+            data["summary"] = summary_val
+
+        # timestamp: low value for LLM context
+        del data["timestamp"]
+
+        # artifacts: strip null label/checksum
+        artifacts = data.get("artifacts")
+        if artifacts:
+            for art in artifacts:
+                for null_key in ("label", "checksum"):
+                    if art.get(null_key) is None:
+                        del art[null_key]
+
+        # state: omit if empty
+        if not data.get("state"):
+            del data["state"]
+
         return data
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, default=str)
+    def to_json(self, *, compact: bool = True) -> str:
+        return json.dumps(self.to_dict(compact=compact), ensure_ascii=False, default=str)

@@ -12,9 +12,30 @@ class ProjectToolPostParseSanitizeTextMixin:
 
 
 
-        to prevent tofu-box glyphs appearing in the output."""
+        to prevent tofu-box glyphs appearing in the output.
+
+
+
+        Also converts traditional Chinese to simplified Chinese so that fonts
+
+        lacking traditional glyphs (e.g. the bundled WenYue font) can render
+
+        the text correctly instead of showing replacement boxes."""
 
         import unicodedata
+
+        # Convert traditional Chinese → simplified Chinese before sanitising.
+
+        # This ensures characters like 學/體/國 are converted to 学/体/国
+
+        # which are present in all bundled CJK fonts.
+
+        converter = self._get_opencc_converter()
+        if converter is not None:
+            try:
+                text = converter.convert(text)
+            except Exception:
+                pass
 
         result = []
 

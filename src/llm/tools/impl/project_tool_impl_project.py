@@ -26,6 +26,37 @@ class ProjectToolProjectMixin:
             "export_preset_count": len(project.export_presets),
         }
 
+    def _project_delta_payload(
+        self, project: Project, project_path: str, *,
+        include_tracks: bool = False,
+        include_short_video: bool = False,
+    ) -> Dict[str, Any]:
+        """Compact payload — only essential project state that may have changed.
+
+        Use this instead of ``_project_summary_payload`` for most tool
+        responses so the LLM receives a smaller, focused delta instead of
+        a full project snapshot on every call.
+        """
+        payload: Dict[str, Any] = {
+            "project_id": project.id,
+            "project_version": project.version,
+            "timeline_duration": float(project.timeline.duration or 0.0),
+            "timeline_fps": (
+                float(project.timeline.fps or 0.0) if project.timeline.fps else None
+            ),
+            **self._project_counts(project),
+        }
+        if include_tracks:
+            payload["tracks"] = [
+                {"id": t.id, "kind": t.kind, "clip_count": len(t.clips)}
+                for t in project.timeline.tracks
+            ]
+        if include_short_video:
+            metrics_builder = getattr(self, "_project_short_video_metrics", None)
+            if callable(metrics_builder):
+                payload["short_video"] = metrics_builder(project)
+        return payload
+
     def _project_summary_payload(
         self, project: Project, project_path: str
     ) -> Dict[str, Any]:
@@ -72,37 +103,61 @@ class ProjectToolProjectMixin:
     def _clip_listing_entry(
         self, project: Project, track: Track, clip: Clip
     ) -> Dict[str, Any]:
-        asset = project.find_asset(clip.asset_id)
-        return {
-            "clip_id": clip.id,
+        entry: Dict[str, Any] = {
+            "id": clip.id,
             "track_id": track.id,
-            "track_kind": track.kind,
-            "track_name": track.name,
             "asset_id": clip.asset_id,
-            "asset_path": asset.path if asset is not None else None,
-            "asset_media_type": asset.media_type if asset is not None else None,
-            "start": float(clip.start),
-            "end": float(clip.end),
-            "duration": float(clip.end - clip.start),
-            "source_in": float(clip.source_in),
-            "source_out": (
-                float(clip.source_out) if clip.source_out is not None else None
-            ),
-            "speed": float(clip.speed),
-            "transform": dict(clip.transform or {}),
-            "metadata": dict(clip.metadata or {}),
+            "start": round(float(clip.start), 3),
+            "end": round(float(clip.end), 3),
         }
+        if clip.source_in:
+            entry["source_in"] = round(float(clip.source_in), 3)
+        if clip.source_out is not None:
+            entry["source_out"] = round(float(clip.source_out), 3)
+        if clip.speed != 1.0:
+            entry["speed"] = float(clip.speed)
+        if clip.transform:
+            entry["transform"] = dict(clip.transform)
+        return entry
 
     def _subtitle_search_entry(self, cue: SubtitleCue) -> Dict[str, Any]:
-        return {
-            "subtitle_id": cue.id,
-            "start": float(cue.start),
-            "end": float(cue.end),
-            "duration": float(cue.end - cue.start),
+        entry: Dict[str, Any] = {
+            "id": cue.id,
+            "start": round(float(cue.start), 3),
+            "end": round(float(cue.end), 3),
             "text": cue.text,
-            "speaker": cue.speaker,
-            "language": cue.language,
-            "track_id": cue.track_id,
-            "position": cue.position,
-            "span_count": len(cue.spans),
         }
+        if cue.speaker:
+            entry["speaker"] = cue.speaker
+        if cue.language:
+            entry["language"] = cue.language
+        if cue.spans:
+            entry["span_count"] = len(cue.spans)
+        return entry
+
+    def _compact_subtitle_entry(self, cue: SubtitleCue) -> Dict[str, Any]:
+        entry: Dict[str, Any] = {
+            "id": cue.id,
+            "start": round(float(cue.start), 3),
+            "end": round(float(cue.end), 3),
+            "text": cue.text,
+        }
+        if cue.speaker:
+            entry["speaker"] = cue.speaker
+        if cue.language:
+            entry["language"] = cue.language
+        return entry
+
+    def _project_detail_payload(
+        self, project: Project, project_path: str
+    ) -> Dict[str, Any]:
+        summary = self._project_summary_payload(project, project_path)
+        summary["clips"] = [
+            self._clip_listing_entry(project, track, clip)
+            for track in project.timeline.tracks
+            for clip in track.clips
+        ]
+        summary["subtitles"] = [
+            self._compact_subtitle_entry(cue) for cue in project.subtitles
+        ]
+        return summary

@@ -8,5 +8,6 @@ opencv-python
 requests
 dashscope
 opencc-python-reimplemented
+playwright>=1.40.0
 pytest
 flake8

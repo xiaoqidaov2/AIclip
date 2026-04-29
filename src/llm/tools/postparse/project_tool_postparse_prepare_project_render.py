@@ -51,7 +51,7 @@ class ProjectToolPostParsePrepareProjectRenderMixin:
                 "preview_path": preview_path,
                 "final_path": final_path,
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             next_actions=(
                 ["fix_project", "revalidate"] if not render_ready else ["render_final"]
             ),

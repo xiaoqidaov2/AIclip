@@ -173,6 +173,6 @@ class ProjectToolPostParseSetProjectSubtitleEffectMixin:
                 "subtitle_id": subtitle_id,
                 "effect_kind": kind,
             },
-            payload=project.to_dict(),
+            payload=self._project_delta_payload(project, project_path),
             summary=f"Applied subtitle effect '{kind}' to cue {subtitle_id}",
         ).to_dict()
